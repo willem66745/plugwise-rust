@@ -5,3 +5,5 @@ authors = ["Willem <willem66745@gmail.com>"]
 
 [dependencies]
 serial = "*"
+crc16 = "*"
+time = "*"
