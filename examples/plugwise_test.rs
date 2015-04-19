@@ -193,7 +193,7 @@ struct DateTime {
 #[derive(Debug, Clone)]
 struct ResInfo {
     datetime: DateTime,
-    last_logaddr: u64,
+    last_logaddr: u32,
     relay_state: bool,
     hz: u8,
     hw_ver: String,
@@ -214,7 +214,7 @@ impl ResInfo {
 
         Ok(ResInfo {
             datetime: datetime,
-            last_logaddr: last_logaddr as u64 * 32 + 278528, // XXX
+            last_logaddr: (last_logaddr - 278528) / 32, // XXX
             relay_state: relay_state != 0,
             hz: match hz {
                 133 => 50,
@@ -247,6 +247,45 @@ const RES_INITIALIZE: isize = 0x0011;
 const REQ_INFO: isize = 0x0023;
 const RES_INFO: isize = 0x0024;
 const REQ_SWITCH: isize = 0x0017;
+// FIXME: const RES_CALIBRATION: isize = 0x0027;
+//  - double: gain_a
+//  - double: gain_b
+//  - double: off_total
+//  - double: off_noise
+// FIXME: const RES_CLOCK_INFO: isize = 0x003F;
+//  - time:
+//      - u8: hour
+//      - u8: minute
+//      - u8: second
+//  - u8: day of week
+//  - u8: unknown
+//  - u16: unknown
+// FIXME: const RES_POWER_USE: isize = 0x0013;
+//  - u16: pulse 1s
+//  - u16: pulse 8s
+//  - u32: pulse hour
+//  - u16: unknown
+//  - u16: unknown
+//  - u16: unknown
+// FIXME: const RES_POWER_BUFFER: isize = 0x0049;
+//  - u32: datetime1 (see DateTime)
+//  - u32: pulses1
+//  - u32: datetime2 (see DateTime)
+//  - u32: pulses2
+//  - u32: datetime3 (see DateTime)
+//  - u32: pulses3
+//  - u32: datetime4 (see DateTime)
+//  - u32: pulses4
+//  - u32: logaddr
+// FIXME: const REQ_POWER_USE: isize = 0x0012;
+// FIXME: const REQ_CLOCK_INFO: isize = 0x003E;
+// FIXME: const REQ_CLOCK_SET: isize = 0x0016;
+//  - u32: datetime (see DateTime)
+//  - u32: logaddr
+//  - u24: time (see 003F)
+//  - u8: day of week
+// FIXME: const REQ_CALIBRATION: isize = 0x0026;
+// FIXME: const REQ_POWER_BUFFER: isize = 0x0048;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum MessageId {
