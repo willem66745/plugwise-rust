@@ -7,3 +7,4 @@ authors = ["Willem <willem66745@gmail.com>"]
 serial = "*"
 crc16 = "*"
 time = "*"
+toml = "*"

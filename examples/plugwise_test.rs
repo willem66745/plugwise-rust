@@ -1,12 +1,15 @@
 extern crate serial;
 extern crate time;
 extern crate crc16;
+extern crate toml;
 
 use std::io;
 use std::io::prelude::*;
 use serial::prelude::*;
 use time::{Timespec, Duration};
 use crc16::*;
+use std::fs::File;
+use std::env::home_dir;
 
 const HEADER: [u8; 4] = [5, 5, 3, 3];
 const FOOTER: [u8; 2] = [13, 10];
@@ -447,6 +450,13 @@ impl<R: Read + Write> Protocol<R> {
 }
 
 fn run() -> io::Result<()> {
+    let mut path = home_dir().unwrap(); // XXX
+    path.push("plugwise.toml");
+    let mut file = try!(File::open(&path));
+    let mut config = String::new();
+    try!(file.read_to_string(&mut config));
+    let config = toml::Parser::new(&config).parse().unwrap(); // XXX
+
     let mut port = try!(serial::open("/dev/ttyUSB0"));
     try!(port.configure(|settings| {
         settings.set_baud_rate(serial::Baud115200);
@@ -461,6 +471,14 @@ fn run() -> io::Result<()> {
 
     let _ = try!(plugwise.initialize());
 
+    for (_, item) in config {
+        if let Some(mac) = item.as_table().unwrap().get("mac") { // XXX
+            let mac = mac.as_str().unwrap(); // XXX
+            let mac = u64::from_str_radix(mac, 16).unwrap(); // XXX
+
+            try!(plugwise.get_info(mac));
+        }
+    }
 
     Ok(())
 }
