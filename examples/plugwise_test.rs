@@ -228,11 +228,25 @@ impl ResInfo {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+struct ReqSwitch{
+    on: bool
+}
+
+impl ReqSwitch {
+    fn as_bytes(&self) -> Vec<u8> {
+        let on = if self.on {1} else {0};
+
+        format!("{:02X}", on).bytes().collect()
+    }
+}
+
 const EMPTY: isize = 0x0000;
 const REQ_INITIALIZE: isize = 0x000A;
 const RES_INITIALIZE: isize = 0x0011;
 const REQ_INFO: isize = 0x0023;
 const RES_INFO: isize = 0x0024;
+const REQ_SWITCH: isize = 0x0017;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum MessageId {
@@ -241,6 +255,7 @@ enum MessageId {
     ResInitialize = RES_INITIALIZE,
     ReqInfo = REQ_INFO,
     ResInfo = RES_INFO,
+    ReqSwitch = REQ_SWITCH,
 }
 
 impl MessageId {
@@ -251,6 +266,7 @@ impl MessageId {
             RES_INITIALIZE => MessageId::ResInitialize,
             REQ_INFO => MessageId::ReqInfo,
             RES_INFO => MessageId::ResInfo,
+            REQ_SWITCH => MessageId::ReqSwitch,
             _ => MessageId::Empty
         }
     }
@@ -267,6 +283,7 @@ enum Message {
     ResInitialize(ResHeader, ResInitialize),
     ReqInfo(ReqHeader),
     ResInfo(ResHeader, ResInfo),
+    ReqSwitch(ReqHeader, ReqSwitch),
 }
 
 impl Message {
@@ -280,12 +297,17 @@ impl Message {
 
         // handle header (generically)
         match *self {
-            Message::ReqInfo(header) => vec.extend(header.as_bytes()),
+            Message::ReqInfo(header) |
+            Message::ReqSwitch(header, _) => vec.extend(header.as_bytes()),
             _ => {}
         }
 
         match *self {
             Message::ReqInitialize | Message::ReqInfo(_) => Ok(vec),
+            Message::ReqSwitch(_, req) => {
+                vec.extend(req.as_bytes());
+                Ok(vec)
+            },
             _ => Err(io::Error::new(io::ErrorKind::Other, "Unsupported message type"))
         }
     }
@@ -327,6 +349,7 @@ impl Message {
             Message::ResInitialize(..) => MessageId::ResInitialize,
             Message::ReqInfo(..) => MessageId::ReqInfo,
             Message::ResInfo(..) => MessageId::ResInfo,
+            Message::ReqSwitch(..) => MessageId::ReqSwitch,
         }
     }
 }
@@ -447,6 +470,16 @@ impl<R: Read + Write> Protocol<R> {
             _ => Err(io::Error::new(io::ErrorKind::Other, "unexpected information response"))
         }
     }
+
+    /// Switch a circle
+    fn switch(&mut self, mac: u64, on: bool) -> io::Result<()> {
+        let msg = try!(Message::ReqSwitch(ReqHeader{mac: mac}, ReqSwitch{on: on}).to_payload());
+        try!(self.send_message_raw(&msg));
+
+        let _ = try!(self.expect_message(MessageId::Empty));
+
+        Ok(())
+    }
 }
 
 fn run() -> io::Result<()> {
@@ -476,7 +509,9 @@ fn run() -> io::Result<()> {
             let mac = mac.as_str().unwrap(); // XXX
             let mac = u64::from_str_radix(mac, 16).unwrap(); // XXX
 
-            try!(plugwise.get_info(mac));
+            let info = try!(plugwise.get_info(mac));
+
+            try!(plugwise.switch(mac, !info.relay_state));
         }
     }
 
