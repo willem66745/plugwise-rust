@@ -5,7 +5,7 @@ extern crate crc16;
 use std::io;
 use std::io::prelude::*;
 use serial::prelude::*;
-use time::Duration;
+use time::{Timespec, Duration};
 use crc16::*;
 
 const HEADER: [u8; 4] = [5, 5, 3, 3];
@@ -73,21 +73,21 @@ impl<'a> RawDataConsumer<'a> {
         Ok((result, value))
     }
 
-    // /// Consume a `u32` from the buffer
-    // fn decode_u32(&self) -> io::Result<(RawDataConsumer, u32)> {
-    //     let (buf, result) = try!(self.consume(8));
-    //     let mut value = 0;
+    /// Consume a `u32` from the buffer
+    fn decode_u32(&self) -> io::Result<(RawDataConsumer, u32)> {
+        let (buf, result) = try!(self.consume(8));
+        let mut value = 0;
 
-    //     for byte in buf {
-    //         value = value << 4 | match *byte {
-    //             b'0' => 0, b'1' => 1, b'2' => 2,  b'3' => 3,  b'4' => 4,  b'5' => 5,  b'6' => 6,  b'7' => 7,
-    //             b'8' => 8, b'9' => 9, b'A' => 10, b'B' => 11, b'C' => 12, b'D' => 13, b'E' => 14, b'F' => 15,
-    //             _ => 0
-    //         };
-    //     }
+        for byte in buf {
+            value = value << 4 | match *byte {
+                b'0' => 0, b'1' => 1, b'2' => 2,  b'3' => 3,  b'4' => 4,  b'5' => 5,  b'6' => 6,  b'7' => 7,
+                b'8' => 8, b'9' => 9, b'A' => 10, b'B' => 11, b'C' => 12, b'D' => 13, b'E' => 14, b'F' => 15,
+                _ => 0
+            };
+        }
 
-    //     Ok((result, value))
-    // }
+        Ok((result, value))
+    }
 
     /// Consume a `u64` from the buffer
     fn decode_u64(&self) -> io::Result<(RawDataConsumer, u64)> {
@@ -105,15 +105,15 @@ impl<'a> RawDataConsumer<'a> {
         Ok((result, value))
     }
 
-    // /// Consume a string of a given size from the buffer
-    // fn decode_string(&self, size: usize) -> io::Result<(RawDataConsumer, &'a str)> {
-    //     let (buf, result) = try!(self.consume(size));
+    /// Consume a string of a given size from the buffer
+    fn decode_string(&self, size: usize) -> io::Result<(RawDataConsumer, &'a str)> {
+        let (buf, result) = try!(self.consume(size));
 
-    //     match std::str::from_utf8(buf) {
-    //         Ok(text) => Ok((result, text)),
-    //         Err(err) => Err(io::Error::new(io::ErrorKind::Other, err))
-    //     }
-    // }
+        match std::str::from_utf8(buf) {
+            Ok(text) => Ok((result, text)),
+            Err(err) => Err(io::Error::new(io::ErrorKind::Other, err))
+        }
+    }
 
     // /// Get the remainder of the data as a string
     // fn remainder(&self) -> io::Result<&'a str> {
@@ -122,6 +122,16 @@ impl<'a> RawDataConsumer<'a> {
     //         Err(err) => Err(io::Error::new(io::ErrorKind::Other, err))
     //     }
     // }
+
+    fn decode_datetime(&self) -> io::Result<(RawDataConsumer, DateTime)> {
+        let (result, raw_datetime) = try!(self.decode_u32());
+
+        Ok((result, DateTime {
+            year: (raw_datetime & 0xff000000 >> 24) as u8,
+            months: (raw_datetime & 0x00ff0000 >> 16) as u8,
+            minutes: (raw_datetime & 0x0000ffff) as u16
+        }))
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -129,6 +139,17 @@ struct ResHeader {
     msgid: MessageId,
     count: u16,
     mac: u64
+}
+
+#[derive(Debug, Copy, Clone)]
+struct ReqHeader {
+    mac: u64
+}
+
+impl ReqHeader {
+    fn as_bytes(&self) -> Vec<u8> {
+        format!("{:016X}", self.mac).bytes().collect()
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -159,15 +180,64 @@ impl ResInitialize {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+struct DateTime {
+    year: u8,
+    months: u8,
+    minutes: u16
+}
+
+#[derive(Debug, Clone)]
+struct ResInfo {
+    datetime: DateTime,
+    last_logaddr: u64,
+    relay_state: bool,
+    hz: u8,
+    hw_ver: String,
+    fw_ver: Timespec,
+    unknown: u8
+}
+
+impl ResInfo {
+    /// Decode info response
+    fn new(decoder: RawDataConsumer) -> io::Result<ResInfo> {
+        let (decoder, datetime) = try!(decoder.decode_datetime());
+        let (decoder, last_logaddr) = try!(decoder.decode_u32());
+        let (decoder, relay_state) = try!(decoder.decode_u8());
+        let (decoder, hz) = try!(decoder.decode_u8());
+        let (decoder, hw_ver) = try!(decoder.decode_string(12));
+        let (decoder, fw_ver) = try!(decoder.decode_u32());
+        let (_, unknown) = try!(decoder.decode_u8());
+
+        Ok(ResInfo {
+            datetime: datetime,
+            last_logaddr: last_logaddr as u64 * 32 + 278528, // XXX
+            relay_state: relay_state != 0,
+            hz: match hz {
+                133 => 50,
+                197 => 60,
+                _ => 0
+            },
+            hw_ver: hw_ver.to_string(),
+            fw_ver: Timespec::new((fw_ver as i32) as i64, 0),
+            unknown: unknown
+        })
+    }
+}
+
 const EMPTY: isize = 0x0000;
 const REQ_INITIALIZE: isize = 0x000A;
 const RES_INITIALIZE: isize = 0x0011;
+const REQ_INFO: isize = 0x0023;
+const RES_INFO: isize = 0x0024;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum MessageId {
     Empty = EMPTY,
     ReqInitialize = REQ_INITIALIZE,
-    ResInitialize = RES_INITIALIZE
+    ResInitialize = RES_INITIALIZE,
+    ReqInfo = REQ_INFO,
+    ResInfo = RES_INFO,
 }
 
 impl MessageId {
@@ -176,6 +246,8 @@ impl MessageId {
             EMPTY => MessageId::Empty,
             REQ_INITIALIZE => MessageId::ReqInitialize,
             RES_INITIALIZE => MessageId::ResInitialize,
+            REQ_INFO => MessageId::ReqInfo,
+            RES_INFO => MessageId::ResInfo,
             _ => MessageId::Empty
         }
     }
@@ -185,11 +257,13 @@ impl MessageId {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 enum Message {
     Empty(ResHeader),
     ReqInitialize,
-    ResInitialize(ResHeader, ResInitialize)
+    ResInitialize(ResHeader, ResInitialize),
+    ReqInfo(ReqHeader),
+    ResInfo(ResHeader, ResInfo),
 }
 
 impl Message {
@@ -199,10 +273,16 @@ impl Message {
 
         println!("> {:?}", *self); // XXX
 
-        vec.extend(MessageId::ReqInitialize.as_bytes());
+        vec.extend(self.to_message_id().as_bytes());
+
+        // handle header (generically)
+        match *self {
+            Message::ReqInfo(header) => vec.extend(header.as_bytes()),
+            _ => {}
+        }
 
         match *self {
-            Message::ReqInitialize => Ok(vec),
+            Message::ReqInitialize | Message::ReqInfo(_) => Ok(vec),
             _ => Err(io::Error::new(io::ErrorKind::Other, "Unsupported message type"))
         }
     }
@@ -230,6 +310,8 @@ impl Message {
         match msg_id {
             MessageId::ResInitialize => 
                 Ok(Message::ResInitialize(header, try!(ResInitialize::new(decoder)))),
+            MessageId::ResInfo => 
+                Ok(Message::ResInfo(header, try!(ResInfo::new(decoder)))),
             _ => 
                 Ok(Message::Empty(header))
         }
@@ -240,6 +322,8 @@ impl Message {
             Message::Empty(..) => MessageId::Empty,
             Message::ReqInitialize(..) => MessageId::ReqInitialize,
             Message::ResInitialize(..) => MessageId::ResInitialize,
+            Message::ReqInfo(..) => MessageId::ReqInfo,
+            Message::ResInfo(..) => MessageId::ResInfo,
         }
     }
 }
@@ -268,22 +352,32 @@ impl<R: Read + Write> Protocol<R> {
         Ok(())
     }
 
-    /// Wait until a complete message has been received
+    /// Wait until a Plugwise message has been received (and skip debugging stuff)
+    fn receive_plugwise_message_raw(&mut self) -> io::Result<(Vec<u8>, usize, usize)> {
+        loop {
+            let mut buf = vec![];
+
+            let _ = try!(self.reader.read_until(EOM, &mut buf));
+
+            let header_pos = buf.windows(HEADER.len()).position(|x| *x==HEADER);
+
+            if header_pos.is_some() {
+                let header_pos = header_pos.unwrap(); // that would be a surprise when this panics
+
+                let footer_pos = match buf.windows(FOOTER.len()).rposition(|x| *x==FOOTER){
+                    None => return Err(io::Error::new(io::ErrorKind::Other,
+                                                      "unable to locate footer in received message")),
+                                                      Some(v) => v
+                };
+
+                return Ok((buf, header_pos, footer_pos))
+            }
+        }
+    }
+
+    /// Wait until a complete and valid message has been received
     fn receive_message_raw(&mut self) -> io::Result<Vec<u8>> {
-        let mut buf = vec![];
-
-        let _ = try!(self.reader.read_until(EOM, &mut buf));
-
-        let header_pos = match buf.windows(HEADER.len()).position(|x| *x==HEADER) {
-            None => return Err(io::Error::new(io::ErrorKind::Other,
-                                              "unable to locate header in received message")),
-            Some(v) => v
-        };
-        let footer_pos = match buf.windows(FOOTER.len()).rposition(|x| *x==FOOTER){
-            None => return Err(io::Error::new(io::ErrorKind::Other,
-                                              "unable to locate footer in received message")),
-            Some(v) => v
-        };
+        let (buf, header_pos, footer_pos) = try!(self.receive_plugwise_message_raw());
 
         // chop off header, footer and CRC
         let payload = buf.iter().take(footer_pos - CRC_SIZE).skip(header_pos + HEADER.len());
@@ -337,6 +431,19 @@ impl<R: Read + Write> Protocol<R> {
             _ => Err(io::Error::new(io::ErrorKind::Other, "unexpected initialization response"))
         }
     }
+
+    /// Get info from a circle
+    fn get_info(&mut self, mac: u64) -> io::Result<ResInfo> {
+        let msg = try!(Message::ReqInfo(ReqHeader{mac: mac}).to_payload());
+        try!(self.send_message_raw(&msg));
+
+        let msg = try!(self.expect_message(MessageId::ResInfo));
+
+        match msg {
+            Message::ResInfo(_, res) => Ok(res),
+            _ => Err(io::Error::new(io::ErrorKind::Other, "unexpected information response"))
+        }
+    }
 }
 
 fn run() -> io::Result<()> {
@@ -353,6 +460,7 @@ fn run() -> io::Result<()> {
     let mut plugwise = Protocol::new(port);
 
     let _ = try!(plugwise.initialize());
+
 
     Ok(())
 }
