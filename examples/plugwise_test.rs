@@ -16,6 +16,21 @@ const HEADER: [u8; 4] = [5, 5, 3, 3];
 const FOOTER: [u8; 2] = [13, 10];
 const EOM: u8 = 10;
 const CRC_SIZE: usize = 4;
+const ADDR_OFFS: u32 = 278528;
+const BYTES_PER_POS: u32 = 32;
+const PULSES_PER_KWS:f64 = 468.9385193;
+
+fn pos2addr(pos: u32) -> u32 {
+    (pos * BYTES_PER_POS) + ADDR_OFFS
+}
+
+fn addr2pos(addr: u32) -> u32 {
+    (addr - ADDR_OFFS) / BYTES_PER_POS
+}
+
+fn to_kws(pulses: u32) -> f64 {
+    pulses as f64 / PULSES_PER_KWS
+}
 
 /// Plugwise raw data consumer
 struct RawDataConsumer<'a> {
@@ -222,7 +237,7 @@ impl ResInfo {
 
         Ok(ResInfo {
             datetime: datetime,
-            last_logaddr: (last_logaddr - 278528) / 32, // XXX
+            last_logaddr: addr2pos(last_logaddr),
             relay_state: relay_state != 0,
             hz: match hz {
                 133 => 50,
@@ -280,7 +295,7 @@ struct ReqPowerBuffer {
 
 impl ReqPowerBuffer {
     fn as_bytes(&self) -> Vec<u8> {
-        let logaddr = (self.logaddr * 32) + 278528;
+        let logaddr = pos2addr(self.logaddr);
 
         format!("{:08X}", logaddr).bytes().collect()
     }
@@ -289,13 +304,13 @@ impl ReqPowerBuffer {
 #[derive(Debug, Copy, Clone)]
 struct ResPowerBuffer {
     datetime1: DateTime,
-    pulses1: u32,
+    pulses1: f64,
     datetime2: DateTime,
-    pulses2: u32,
+    pulses2: f64,
     datetime3: DateTime,
-    pulses3: u32,
+    pulses3: f64,
     datetime4: DateTime,
-    pulses4: u32,
+    pulses4: f64,
     logaddr: u32,
 }
 
@@ -313,14 +328,44 @@ impl ResPowerBuffer {
 
         Ok(ResPowerBuffer {
             datetime1: datetime1,
-            pulses1: pulses1,
+            pulses1: to_kws(pulses1),
             datetime2: datetime2,
-            pulses2: pulses2,
+            pulses2: to_kws(pulses2),
             datetime3: datetime3,
-            pulses3: pulses3,
+            pulses3: to_kws(pulses3),
             datetime4: datetime4,
-            pulses4: pulses4,
-            logaddr: (logaddr - 278528) / 32
+            pulses4: to_kws(pulses4),
+            logaddr: addr2pos(logaddr)
+        })
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+struct ResPowerUse {
+    pulse_1s: f64,
+    pulse_8s: f64,
+    pulse_hour: f64,
+    unknown1: u16,
+    unknown2: u16,
+    unknown3: u16,
+}
+
+impl ResPowerUse {
+    fn new(decoder: RawDataConsumer) -> io::Result<ResPowerUse> {
+        let (decoder, pulse_1s) = try!(decoder.decode_u16());
+        let (decoder, pulse_8s) = try!(decoder.decode_u16());
+        let (decoder, pulse_hour) = try!(decoder.decode_u32());
+        let (decoder, unknown1) = try!(decoder.decode_u16());
+        let (decoder, unknown2) = try!(decoder.decode_u16());
+        let (_, unknown3) = try!(decoder.decode_u16());
+
+        Ok(ResPowerUse {
+            pulse_1s: to_kws(pulse_1s as u32),
+            pulse_8s: to_kws(pulse_8s as u32),
+            pulse_hour: to_kws(pulse_hour),
+            unknown1: unknown1,
+            unknown2: unknown2,
+            unknown3: unknown3,
         })
     }
 }
@@ -335,6 +380,8 @@ const REQ_CALIBRATION: u16 = 0x0026;
 const RES_CALIBRATION: u16 = 0x0027;
 const REQ_POWER_BUFFER: u16 = 0x0048;
 const RES_POWER_BUFFER: u16 = 0x0049;
+const REQ_POWER_USE: u16 = 0x0012;
+const RES_POWER_USE: u16 = 0x0013;
 // FIXME: const RES_CLOCK_INFO: u16 = 0x003F;
 //  - time:
 //      - u8: hour
@@ -343,14 +390,6 @@ const RES_POWER_BUFFER: u16 = 0x0049;
 //  - u8: day of week
 //  - u8: unknown
 //  - u16: unknown
-// FIXME: const RES_POWER_USE: u16 = 0x0013;
-//  - u16: pulse 1s
-//  - u16: pulse 8s
-//  - u32: pulse hour
-//  - u16: unknown
-//  - u16: unknown
-//  - u16: unknown
-// FIXME: const REQ_POWER_USE: u16 = 0x0012;
 // FIXME: const REQ_CLOCK_INFO: u16 = 0x003E;
 // FIXME: const REQ_CLOCK_SET: u16 = 0x0016;
 //  - u32: datetime (see DateTime)
@@ -371,6 +410,8 @@ enum MessageId {
     ResCalibration = RES_CALIBRATION,
     ReqPowerBuffer = REQ_POWER_BUFFER,
     ResPowerBuffer = RES_POWER_BUFFER,
+    ReqPowerUse = REQ_POWER_USE,
+    ResPowerUse = RES_POWER_USE,
 }
 
 impl MessageId {
@@ -386,6 +427,8 @@ impl MessageId {
             RES_CALIBRATION => MessageId::ResCalibration,
             REQ_POWER_BUFFER => MessageId::ReqPowerBuffer,
             RES_POWER_BUFFER => MessageId::ResPowerBuffer,
+            REQ_POWER_USE => MessageId::ReqPowerUse,
+            RES_POWER_USE => MessageId::ResPowerUse,
             _ => MessageId::Empty
         }
     }
@@ -407,6 +450,8 @@ enum Message {
     ResCalibration(ResHeader, ResCalibration),
     ReqPowerBuffer(ReqHeader, ReqPowerBuffer),
     ResPowerBuffer(ResHeader, ResPowerBuffer),
+    ReqPowerUse(ReqHeader),
+    ResPowerUse(ResHeader, ResPowerUse),
 }
 
 impl Message {
@@ -423,14 +468,16 @@ impl Message {
             Message::ReqInfo(header) |
             Message::ReqSwitch(header, _) |
             Message::ReqCalibration(header) |
-            Message::ReqPowerBuffer(header, _) => vec.extend(header.as_bytes()),
+            Message::ReqPowerBuffer(header, _) |
+            Message::ReqPowerUse(header) => vec.extend(header.as_bytes()),
             _ => {}
         }
 
         match *self {
             Message::ReqInitialize |
             Message::ReqInfo(_) |
-            Message::ReqCalibration(_) => Ok(vec),
+            Message::ReqCalibration(_) |
+            Message::ReqPowerUse(_) => Ok(vec),
             Message::ReqPowerBuffer(_, req) => {
                 vec.extend(req.as_bytes());
                 Ok(vec)
@@ -472,6 +519,8 @@ impl Message {
                 Ok(Message::ResCalibration(header, try!(ResCalibration::new(decoder)))),
             MessageId::ResPowerBuffer =>
                 Ok(Message::ResPowerBuffer(header, try!(ResPowerBuffer::new(decoder)))),
+            MessageId::ResPowerUse =>
+                Ok(Message::ResPowerUse(header, try!(ResPowerUse::new(decoder)))),
             _ => 
                 Ok(Message::Empty(header))
         }
@@ -489,6 +538,8 @@ impl Message {
             Message::ResCalibration(..) => MessageId::ResCalibration,
             Message::ReqPowerBuffer(..) => MessageId::ReqPowerBuffer,
             Message::ResPowerBuffer(..) => MessageId::ResPowerBuffer,
+            Message::ReqPowerUse(..) => MessageId::ReqPowerUse,
+            Message::ResPowerUse(..) => MessageId::ResPowerUse,
         }
     }
 }
@@ -646,6 +697,19 @@ impl<R: Read + Write> Protocol<R> {
             _ => Err(io::Error::new(io::ErrorKind::Other, "unexpected information response"))
         }
     }
+
+    /// Retrieve actual power usage
+    fn get_power_usage(&mut self, mac: u64) -> io::Result<ResPowerUse> {
+        let msg = try!(Message::ReqPowerUse(ReqHeader{mac: mac}).to_payload());
+        try!(self.send_message_raw(&msg));
+
+        let msg = try!(self.expect_message(MessageId::ResPowerUse));
+
+        match msg {
+            Message::ResPowerUse(_, res) => Ok(res),
+            _ => Err(io::Error::new(io::ErrorKind::Other, "unexpected information response"))
+        }
+    }
 }
 
 fn run() -> io::Result<()> {
@@ -680,6 +744,7 @@ fn run() -> io::Result<()> {
             //try!(plugwise.switch(mac, !info.relay_state));
             //let _ = try!(plugwise.calibrate(mac));
             //let _ = try!(plugwise.get_power_buffer(mac, 0));
+            let _ = try!(plugwise.get_power_usage(mac));
         }
     }
 
