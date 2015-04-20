@@ -10,6 +10,7 @@ use time::{Timespec, Duration};
 use crc16::*;
 use std::fs::File;
 use std::env::home_dir;
+use std::mem::transmute;
 
 const HEADER: [u8; 4] = [5, 5, 3, 3];
 const FOOTER: [u8; 2] = [13, 10];
@@ -42,7 +43,7 @@ impl<'a> RawDataConsumer<'a> {
         }))
     }
 
-    // TODO: Rust generics doesn't allow yet to create a generic version for u8, u16, u32, u64
+    // FIXME: Rust generics doesn't allow yet to create a generic version for u8, u16, u32, u64
  
     /// Consume a `u8` from the buffer
     fn decode_u8(&self) -> io::Result<(RawDataConsumer, u8)> {
@@ -90,6 +91,13 @@ impl<'a> RawDataConsumer<'a> {
         }
 
         Ok((result, value))
+    }
+
+    /// Consume a `f32` from the buffer
+    fn decode_f32(&self) -> io::Result<(RawDataConsumer, f32)> {
+        let (result, unconverted) = try!(self.decode_u32());
+        let converted: f32 = unsafe { transmute(unconverted) };
+        Ok((result, converted))
     }
 
     /// Consume a `u64` from the buffer
@@ -241,17 +249,39 @@ impl ReqSwitch {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+struct ResCalibration {
+    gain_a: f32,
+    gain_b: f32,
+    off_total: f32,
+    off_noise: f32
+}
+
+impl ResCalibration {
+    fn new(decoder: RawDataConsumer) -> io::Result<ResCalibration> {
+        let (decoder, gain_a) = try!(decoder.decode_f32());
+        let (decoder, gain_b) = try!(decoder.decode_f32());
+        let (decoder, off_total) = try!(decoder.decode_f32());
+        let (_, off_noise) = try!(decoder.decode_f32());
+
+        Ok(ResCalibration {
+            gain_a: gain_a,
+            gain_b: gain_b,
+            off_total: off_total,
+            off_noise: off_noise
+        })
+    }
+}
+
+
 const EMPTY: u16 = 0x0000;
 const REQ_INITIALIZE: u16 = 0x000A;
 const RES_INITIALIZE: u16 = 0x0011;
 const REQ_INFO: u16 = 0x0023;
 const RES_INFO: u16 = 0x0024;
 const REQ_SWITCH: u16 = 0x0017;
-// FIXME: const RES_CALIBRATION: u16 = 0x0027;
-//  - double: gain_a
-//  - double: gain_b
-//  - double: off_total
-//  - double: off_noise
+const REQ_CALIBRATION: u16 = 0x0026;
+const RES_CALIBRATION: u16 = 0x0027;
 // FIXME: const RES_CLOCK_INFO: u16 = 0x003F;
 //  - time:
 //      - u8: hour
@@ -284,7 +314,6 @@ const REQ_SWITCH: u16 = 0x0017;
 //  - u32: logaddr
 //  - u24: time (see 003F)
 //  - u8: day of week
-// FIXME: const REQ_CALIBRATION: u16 = 0x0026;
 // FIXME: const REQ_POWER_BUFFER: u16 = 0x0048;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -296,6 +325,8 @@ enum MessageId {
     ReqInfo = REQ_INFO,
     ResInfo = RES_INFO,
     ReqSwitch = REQ_SWITCH,
+    ReqCalibration = REQ_CALIBRATION,
+    ResCalibration = RES_CALIBRATION,
 }
 
 impl MessageId {
@@ -307,6 +338,8 @@ impl MessageId {
             REQ_INFO => MessageId::ReqInfo,
             RES_INFO => MessageId::ResInfo,
             REQ_SWITCH => MessageId::ReqSwitch,
+            REQ_CALIBRATION => MessageId::ReqCalibration,
+            RES_CALIBRATION => MessageId::ResCalibration,
             _ => MessageId::Empty
         }
     }
@@ -324,6 +357,8 @@ enum Message {
     ReqInfo(ReqHeader),
     ResInfo(ResHeader, ResInfo),
     ReqSwitch(ReqHeader, ReqSwitch),
+    ReqCalibration(ReqHeader),
+    ResCalibration(ResHeader, ResCalibration),
 }
 
 impl Message {
@@ -338,12 +373,15 @@ impl Message {
         // handle header (generically)
         match *self {
             Message::ReqInfo(header) |
-            Message::ReqSwitch(header, _) => vec.extend(header.as_bytes()),
+            Message::ReqSwitch(header, _) |
+            Message::ReqCalibration(header) => vec.extend(header.as_bytes()),
             _ => {}
         }
 
         match *self {
-            Message::ReqInitialize | Message::ReqInfo(_) => Ok(vec),
+            Message::ReqInitialize |
+            Message::ReqInfo(_) |
+            Message::ReqCalibration(_)=> Ok(vec),
             Message::ReqSwitch(_, req) => {
                 vec.extend(req.as_bytes());
                 Ok(vec)
@@ -377,6 +415,8 @@ impl Message {
                 Ok(Message::ResInitialize(header, try!(ResInitialize::new(decoder)))),
             MessageId::ResInfo => 
                 Ok(Message::ResInfo(header, try!(ResInfo::new(decoder)))),
+            MessageId::ResCalibration =>
+                Ok(Message::ResCalibration(header, try!(ResCalibration::new(decoder)))),
             _ => 
                 Ok(Message::Empty(header))
         }
@@ -390,6 +430,8 @@ impl Message {
             Message::ReqInfo(..) => MessageId::ReqInfo,
             Message::ResInfo(..) => MessageId::ResInfo,
             Message::ReqSwitch(..) => MessageId::ReqSwitch,
+            Message::ReqCalibration(..) => MessageId::ReqCalibration,
+            Message::ResCalibration(..) => MessageId::ResCalibration,
         }
     }
 }
@@ -520,6 +562,19 @@ impl<R: Read + Write> Protocol<R> {
 
         Ok(())
     }
+
+    /// Calibrate a circle
+    fn calibrate(&mut self, mac: u64) -> io::Result<ResCalibration> {
+        let msg = try!(Message::ReqCalibration(ReqHeader{mac: mac}).to_payload());
+        try!(self.send_message_raw(&msg));
+
+        let msg = try!(self.expect_message(MessageId::ResCalibration));
+
+        match msg {
+            Message::ResCalibration(_, res) => Ok(res),
+            _ => Err(io::Error::new(io::ErrorKind::Other, "unexpected information response"))
+        }
+    }
 }
 
 fn run() -> io::Result<()> {
@@ -549,9 +604,10 @@ fn run() -> io::Result<()> {
             let mac = mac.as_str().unwrap(); // XXX
             let mac = u64::from_str_radix(mac, 16).unwrap(); // XXX
 
-            let info = try!(plugwise.get_info(mac));
+            //let info = try!(plugwise.get_info(mac));
 
-            try!(plugwise.switch(mac, !info.relay_state));
+            //try!(plugwise.switch(mac, !info.relay_state));
+            let _ = plugwise.calibrate(mac);
         }
     }
 
