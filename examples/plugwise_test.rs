@@ -150,12 +150,16 @@ impl<'a> RawDataConsumer<'a> {
     // }
 
     fn decode_datetime(&self) -> io::Result<(RawDataConsumer, DateTime)> {
-        let (result, raw_datetime) = try!(self.decode_u32());
+        let (result, _) = try!(self.decode_u32());
+
+        let (result1, year) = try!(self.decode_u8());
+        let (result1, months) = try!(result1.decode_u8());
+        let (_, minutes) = try!(result1.decode_u16());
 
         Ok((result, DateTime {
-            year: (raw_datetime & 0xff000000 >> 24) as u8,
-            months: (raw_datetime & 0x00ff0000 >> 16) as u8,
-            minutes: (raw_datetime & 0x0000ffff) as u16
+            year: year,
+            months: months,
+            minutes: minutes,
         }))
     }
 }
@@ -823,7 +827,7 @@ fn run() -> io::Result<()> {
 
             //try!(plugwise.switch(mac, !info.relay_state));
             //let _ = try!(plugwise.calibrate(mac));
-            //let _ = try!(plugwise.get_power_buffer(mac, 0));
+            let _ = try!(plugwise.get_power_buffer(mac, 0));
             let _ = try!(plugwise.get_power_usage(mac));
             let _ = try!(plugwise.get_clock_info(mac));
         }
