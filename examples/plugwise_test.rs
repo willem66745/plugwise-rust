@@ -273,6 +273,57 @@ impl ResCalibration {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+struct ReqPowerBuffer {
+    logaddr: u32
+}
+
+impl ReqPowerBuffer {
+    fn as_bytes(&self) -> Vec<u8> {
+        let logaddr = (self.logaddr * 32) + 278528;
+
+        format!("{:08X}", logaddr).bytes().collect()
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+struct ResPowerBuffer {
+    datetime1: DateTime,
+    pulses1: u32,
+    datetime2: DateTime,
+    pulses2: u32,
+    datetime3: DateTime,
+    pulses3: u32,
+    datetime4: DateTime,
+    pulses4: u32,
+    logaddr: u32,
+}
+
+impl ResPowerBuffer {
+    fn new(decoder: RawDataConsumer) -> io::Result<ResPowerBuffer> {
+        let (decoder, datetime1) = try!(decoder.decode_datetime());
+        let (decoder, pulses1) = try!(decoder.decode_u32());
+        let (decoder, datetime2) = try!(decoder.decode_datetime());
+        let (decoder, pulses2) = try!(decoder.decode_u32());
+        let (decoder, datetime3) = try!(decoder.decode_datetime());
+        let (decoder, pulses3) = try!(decoder.decode_u32());
+        let (decoder, datetime4) = try!(decoder.decode_datetime());
+        let (decoder, pulses4) = try!(decoder.decode_u32());
+        let (_, logaddr) = try!(decoder.decode_u32());
+
+        Ok(ResPowerBuffer {
+            datetime1: datetime1,
+            pulses1: pulses1,
+            datetime2: datetime2,
+            pulses2: pulses2,
+            datetime3: datetime3,
+            pulses3: pulses3,
+            datetime4: datetime4,
+            pulses4: pulses4,
+            logaddr: (logaddr - 278528) / 32
+        })
+    }
+}
 
 const EMPTY: u16 = 0x0000;
 const REQ_INITIALIZE: u16 = 0x000A;
@@ -282,6 +333,8 @@ const RES_INFO: u16 = 0x0024;
 const REQ_SWITCH: u16 = 0x0017;
 const REQ_CALIBRATION: u16 = 0x0026;
 const RES_CALIBRATION: u16 = 0x0027;
+const REQ_POWER_BUFFER: u16 = 0x0048;
+const RES_POWER_BUFFER: u16 = 0x0049;
 // FIXME: const RES_CLOCK_INFO: u16 = 0x003F;
 //  - time:
 //      - u8: hour
@@ -297,16 +350,6 @@ const RES_CALIBRATION: u16 = 0x0027;
 //  - u16: unknown
 //  - u16: unknown
 //  - u16: unknown
-// FIXME: const RES_POWER_BUFFER: u16 = 0x0049;
-//  - u32: datetime1 (see DateTime)
-//  - u32: pulses1
-//  - u32: datetime2 (see DateTime)
-//  - u32: pulses2
-//  - u32: datetime3 (see DateTime)
-//  - u32: pulses3
-//  - u32: datetime4 (see DateTime)
-//  - u32: pulses4
-//  - u32: logaddr
 // FIXME: const REQ_POWER_USE: u16 = 0x0012;
 // FIXME: const REQ_CLOCK_INFO: u16 = 0x003E;
 // FIXME: const REQ_CLOCK_SET: u16 = 0x0016;
@@ -314,7 +357,6 @@ const RES_CALIBRATION: u16 = 0x0027;
 //  - u32: logaddr
 //  - u24: time (see 003F)
 //  - u8: day of week
-// FIXME: const REQ_POWER_BUFFER: u16 = 0x0048;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u16)]
@@ -327,6 +369,8 @@ enum MessageId {
     ReqSwitch = REQ_SWITCH,
     ReqCalibration = REQ_CALIBRATION,
     ResCalibration = RES_CALIBRATION,
+    ReqPowerBuffer = REQ_POWER_BUFFER,
+    ResPowerBuffer = RES_POWER_BUFFER,
 }
 
 impl MessageId {
@@ -340,6 +384,8 @@ impl MessageId {
             REQ_SWITCH => MessageId::ReqSwitch,
             REQ_CALIBRATION => MessageId::ReqCalibration,
             RES_CALIBRATION => MessageId::ResCalibration,
+            REQ_POWER_BUFFER => MessageId::ReqPowerBuffer,
+            RES_POWER_BUFFER => MessageId::ResPowerBuffer,
             _ => MessageId::Empty
         }
     }
@@ -359,6 +405,8 @@ enum Message {
     ReqSwitch(ReqHeader, ReqSwitch),
     ReqCalibration(ReqHeader),
     ResCalibration(ResHeader, ResCalibration),
+    ReqPowerBuffer(ReqHeader, ReqPowerBuffer),
+    ResPowerBuffer(ResHeader, ResPowerBuffer),
 }
 
 impl Message {
@@ -374,14 +422,19 @@ impl Message {
         match *self {
             Message::ReqInfo(header) |
             Message::ReqSwitch(header, _) |
-            Message::ReqCalibration(header) => vec.extend(header.as_bytes()),
+            Message::ReqCalibration(header) |
+            Message::ReqPowerBuffer(header, _) => vec.extend(header.as_bytes()),
             _ => {}
         }
 
         match *self {
             Message::ReqInitialize |
             Message::ReqInfo(_) |
-            Message::ReqCalibration(_)=> Ok(vec),
+            Message::ReqCalibration(_) => Ok(vec),
+            Message::ReqPowerBuffer(_, req) => {
+                vec.extend(req.as_bytes());
+                Ok(vec)
+            },
             Message::ReqSwitch(_, req) => {
                 vec.extend(req.as_bytes());
                 Ok(vec)
@@ -417,6 +470,8 @@ impl Message {
                 Ok(Message::ResInfo(header, try!(ResInfo::new(decoder)))),
             MessageId::ResCalibration =>
                 Ok(Message::ResCalibration(header, try!(ResCalibration::new(decoder)))),
+            MessageId::ResPowerBuffer =>
+                Ok(Message::ResPowerBuffer(header, try!(ResPowerBuffer::new(decoder)))),
             _ => 
                 Ok(Message::Empty(header))
         }
@@ -432,6 +487,8 @@ impl Message {
             Message::ReqSwitch(..) => MessageId::ReqSwitch,
             Message::ReqCalibration(..) => MessageId::ReqCalibration,
             Message::ResCalibration(..) => MessageId::ResCalibration,
+            Message::ReqPowerBuffer(..) => MessageId::ReqPowerBuffer,
+            Message::ResPowerBuffer(..) => MessageId::ResPowerBuffer,
         }
     }
 }
@@ -575,6 +632,20 @@ impl<R: Read + Write> Protocol<R> {
             _ => Err(io::Error::new(io::ErrorKind::Other, "unexpected information response"))
         }
     }
+
+    /// Retrieve power buffer
+    fn get_power_buffer(&mut self, mac: u64, addr: u32) -> io::Result<ResPowerBuffer> {
+        let msg = try!(Message::ReqPowerBuffer(ReqHeader{mac: mac},
+                                               ReqPowerBuffer{logaddr: addr}).to_payload());
+        try!(self.send_message_raw(&msg));
+
+        let msg = try!(self.expect_message(MessageId::ResPowerBuffer));
+
+        match msg {
+            Message::ResPowerBuffer(_, res) => Ok(res),
+            _ => Err(io::Error::new(io::ErrorKind::Other, "unexpected information response"))
+        }
+    }
 }
 
 fn run() -> io::Result<()> {
@@ -607,7 +678,8 @@ fn run() -> io::Result<()> {
             //let info = try!(plugwise.get_info(mac));
 
             //try!(plugwise.switch(mac, !info.relay_state));
-            let _ = plugwise.calibrate(mac);
+            //let _ = try!(plugwise.calibrate(mac));
+            //let _ = try!(plugwise.get_power_buffer(mac, 0));
         }
     }
 
