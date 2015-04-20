@@ -370,6 +370,33 @@ impl ResPowerUse {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+struct ResClockInfo {
+    hour: u8,
+    minute: u8,
+    second: u8,
+    day_of_week: u8,
+    unknown: u16
+}
+
+impl ResClockInfo {
+    fn new(decoder: RawDataConsumer) -> io::Result<ResClockInfo> {
+        let (decoder, hour) = try!(decoder.decode_u8());
+        let (decoder, minute) = try!(decoder.decode_u8());
+        let (decoder, second) = try!(decoder.decode_u8());
+        let (decoder, day_of_week) = try!(decoder.decode_u8());
+        let (_, unknown) = try!(decoder.decode_u16());
+
+        Ok(ResClockInfo {
+            hour: hour,
+            minute: minute,
+            second: second,
+            day_of_week: day_of_week,
+            unknown: unknown
+        })
+    }
+}
+
 const EMPTY: u16 = 0x0000;
 const REQ_INITIALIZE: u16 = 0x000A;
 const RES_INITIALIZE: u16 = 0x0011;
@@ -382,15 +409,8 @@ const REQ_POWER_BUFFER: u16 = 0x0048;
 const RES_POWER_BUFFER: u16 = 0x0049;
 const REQ_POWER_USE: u16 = 0x0012;
 const RES_POWER_USE: u16 = 0x0013;
-// FIXME: const RES_CLOCK_INFO: u16 = 0x003F;
-//  - time:
-//      - u8: hour
-//      - u8: minute
-//      - u8: second
-//  - u8: day of week
-//  - u8: unknown
-//  - u16: unknown
-// FIXME: const REQ_CLOCK_INFO: u16 = 0x003E;
+const REQ_CLOCK_INFO: u16 = 0x003E;
+const RES_CLOCK_INFO: u16 = 0x003F;
 // FIXME: const REQ_CLOCK_SET: u16 = 0x0016;
 //  - u32: datetime (see DateTime)
 //  - u32: logaddr
@@ -412,6 +432,8 @@ enum MessageId {
     ResPowerBuffer = RES_POWER_BUFFER,
     ReqPowerUse = REQ_POWER_USE,
     ResPowerUse = RES_POWER_USE,
+    ReqClockInfo = REQ_CLOCK_INFO,
+    ResClockInfo = RES_CLOCK_INFO,
 }
 
 impl MessageId {
@@ -429,6 +451,8 @@ impl MessageId {
             RES_POWER_BUFFER => MessageId::ResPowerBuffer,
             REQ_POWER_USE => MessageId::ReqPowerUse,
             RES_POWER_USE => MessageId::ResPowerUse,
+            REQ_CLOCK_INFO => MessageId::ReqClockInfo,
+            RES_CLOCK_INFO => MessageId::ResClockInfo,
             _ => MessageId::Empty
         }
     }
@@ -452,6 +476,8 @@ enum Message {
     ResPowerBuffer(ResHeader, ResPowerBuffer),
     ReqPowerUse(ReqHeader),
     ResPowerUse(ResHeader, ResPowerUse),
+    ReqClockInfo(ReqHeader),
+    ResClockInfo(ResHeader, ResClockInfo),
 }
 
 impl Message {
@@ -469,7 +495,8 @@ impl Message {
             Message::ReqSwitch(header, _) |
             Message::ReqCalibration(header) |
             Message::ReqPowerBuffer(header, _) |
-            Message::ReqPowerUse(header) => vec.extend(header.as_bytes()),
+            Message::ReqPowerUse(header) |
+            Message::ReqClockInfo(header) => vec.extend(header.as_bytes()),
             _ => {}
         }
 
@@ -477,7 +504,8 @@ impl Message {
             Message::ReqInitialize |
             Message::ReqInfo(_) |
             Message::ReqCalibration(_) |
-            Message::ReqPowerUse(_) => Ok(vec),
+            Message::ReqPowerUse(_) |
+            Message::ReqClockInfo(_) => Ok(vec),
             Message::ReqPowerBuffer(_, req) => {
                 vec.extend(req.as_bytes());
                 Ok(vec)
@@ -521,6 +549,8 @@ impl Message {
                 Ok(Message::ResPowerBuffer(header, try!(ResPowerBuffer::new(decoder)))),
             MessageId::ResPowerUse =>
                 Ok(Message::ResPowerUse(header, try!(ResPowerUse::new(decoder)))),
+            MessageId::ResClockInfo =>
+                Ok(Message::ResClockInfo(header, try!(ResClockInfo::new(decoder)))),
             _ => 
                 Ok(Message::Empty(header))
         }
@@ -540,6 +570,8 @@ impl Message {
             Message::ResPowerBuffer(..) => MessageId::ResPowerBuffer,
             Message::ReqPowerUse(..) => MessageId::ReqPowerUse,
             Message::ResPowerUse(..) => MessageId::ResPowerUse,
+            Message::ReqClockInfo(..) => MessageId::ReqClockInfo,
+            Message::ResClockInfo(..) => MessageId::ResClockInfo,
         }
     }
 }
@@ -710,6 +742,19 @@ impl<R: Read + Write> Protocol<R> {
             _ => Err(io::Error::new(io::ErrorKind::Other, "unexpected information response"))
         }
     }
+
+    /// Retrieve actual power usage
+    fn get_clock_info(&mut self, mac: u64) -> io::Result<ResClockInfo> {
+        let msg = try!(Message::ReqClockInfo(ReqHeader{mac: mac}).to_payload());
+        try!(self.send_message_raw(&msg));
+
+        let msg = try!(self.expect_message(MessageId::ResClockInfo));
+
+        match msg {
+            Message::ResClockInfo(_, res) => Ok(res),
+            _ => Err(io::Error::new(io::ErrorKind::Other, "unexpected information response"))
+        }
+    }
 }
 
 fn run() -> io::Result<()> {
@@ -745,6 +790,7 @@ fn run() -> io::Result<()> {
             //let _ = try!(plugwise.calibrate(mac));
             //let _ = try!(plugwise.get_power_buffer(mac, 0));
             let _ = try!(plugwise.get_power_usage(mac));
+            let _ = try!(plugwise.get_clock_info(mac));
         }
     }
 
