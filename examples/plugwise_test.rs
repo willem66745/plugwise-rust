@@ -6,7 +6,7 @@ extern crate toml;
 use std::io;
 use std::io::prelude::*;
 use serial::prelude::*;
-use time::{Timespec, Duration};
+use time::{Timespec, Duration, Tm};
 use crc16::*;
 use std::fs::File;
 use std::env::home_dir;
@@ -211,6 +211,41 @@ struct DateTime {
     year: u8,
     months: u8,
     minutes: u16
+}
+
+impl DateTime {
+    fn new(timestamp: Tm) -> DateTime{
+        let utc = timestamp.to_utc();
+
+        DateTime {
+            year: (utc.tm_year - 100) as u8,
+            months: (utc.tm_mon + 1) as u8,
+            minutes: (((utc.tm_mday - 1) * 24 * 60) + (utc.tm_hour * 60) + utc.tm_min) as u16
+        }
+    }
+
+    fn to_tm(&self) -> Option<Tm> {
+        let mday = 1 + (self.minutes / (24 * 60)) as i32;
+        if self.months > 12 || mday > 31 {
+            return None;
+        }
+
+        let tm = Tm {
+            tm_sec: 0,
+            tm_min: (self.minutes % 60) as i32,
+            tm_hour: (self.minutes % (24 * 60)) as i32,
+            tm_mday: mday,
+            tm_mon: (self.months - 1) as i32,
+            tm_year: 100 + (self.year) as i32,
+            tm_wday: 0,
+            tm_yday: 0,
+            tm_isdst: 0,
+            tm_utcoff: 0,
+            tm_nsec: 0
+        };
+
+        Some(tm.to_utc())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -784,7 +819,7 @@ fn run() -> io::Result<()> {
             let mac = mac.as_str().unwrap(); // XXX
             let mac = u64::from_str_radix(mac, 16).unwrap(); // XXX
 
-            //let info = try!(plugwise.get_info(mac));
+            let info = try!(plugwise.get_info(mac));
 
             //try!(plugwise.switch(mac, !info.relay_state));
             //let _ = try!(plugwise.calibrate(mac));
