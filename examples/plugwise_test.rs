@@ -6,7 +6,7 @@ extern crate toml;
 use std::io;
 use std::io::prelude::*;
 use serial::prelude::*;
-use time::{Timespec, Duration, Tm};
+use time::{Timespec, Duration, Tm, now};
 use crc16::*;
 use std::fs::File;
 use std::env::home_dir;
@@ -20,14 +20,17 @@ const ADDR_OFFS: u32 = 278528;
 const BYTES_PER_POS: u32 = 32;
 const PULSES_PER_KWS:f64 = 468.9385193;
 
+/// Convert log element to memory address
 fn pos2addr(pos: u32) -> u32 {
     (pos * BYTES_PER_POS) + ADDR_OFFS
 }
 
+/// Convert memory address to log element
 fn addr2pos(addr: u32) -> u32 {
     (addr - ADDR_OFFS) / BYTES_PER_POS
 }
 
+/// Convert pulses to kWs
 fn to_kws(pulses: u32) -> f64 {
     pulses as f64 / PULSES_PER_KWS
 }
@@ -439,6 +442,42 @@ impl ResClockInfo {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+struct ReqClockSet {
+    datetime: DateTime,
+    logaddr: Option<u32>,
+    hour: u8,
+    minute: u8,
+    second: u8,
+    day_of_week: u8,
+}
+
+impl ReqClockSet {
+    fn new_from_tm(tm: Tm) -> ReqClockSet {
+        let utc = tm.to_utc();
+
+        ReqClockSet {
+            datetime: DateTime::new(utc),
+            logaddr: None,
+            hour: utc.tm_hour as u8,
+            minute: utc.tm_min as u8,
+            second: utc.tm_sec as u8,
+            day_of_week: utc.tm_wday as u8,
+        }
+    }
+
+    fn as_bytes(&self) -> Vec<u8> {
+        let logaddr = match self.logaddr {
+            None => 0xffffffff,
+            Some(addr) => pos2addr(addr)
+        };
+
+        format!("{:02X}{:02X}{:04X}{:08X}{:02X}{:02X}{:02X}{:02X}",
+                self.datetime.year, self.datetime.months, self.datetime.minutes, logaddr,
+                self.hour, self.minute, self.second, self.day_of_week).bytes().collect()
+    }
+}
+
 const ACK: u16 = 0x0000;
 const REQ_INITIALIZE: u16 = 0x000A;
 const RES_INITIALIZE: u16 = 0x0011;
@@ -453,11 +492,7 @@ const REQ_POWER_USE: u16 = 0x0012;
 const RES_POWER_USE: u16 = 0x0013;
 const REQ_CLOCK_INFO: u16 = 0x003E;
 const RES_CLOCK_INFO: u16 = 0x003F;
-// FIXME: const REQ_CLOCK_SET: u16 = 0x0016;
-//  - u32: datetime (see DateTime)
-//  - u32: logaddr
-//  - u24: time (see 003F)
-//  - u8: day of week
+const REQ_CLOCK_SET: u16 = 0x0016;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u16)]
@@ -476,6 +511,7 @@ enum MessageId {
     ResPowerUse = RES_POWER_USE,
     ReqClockInfo = REQ_CLOCK_INFO,
     ResClockInfo = RES_CLOCK_INFO,
+    ReqClockSet = REQ_CLOCK_SET,
 }
 
 impl MessageId {
@@ -495,6 +531,7 @@ impl MessageId {
             RES_POWER_USE => MessageId::ResPowerUse,
             REQ_CLOCK_INFO => MessageId::ReqClockInfo,
             RES_CLOCK_INFO => MessageId::ResClockInfo,
+            REQ_CLOCK_SET => MessageId::ReqClockSet,
             _ => MessageId::Ack
         }
     }
@@ -520,6 +557,7 @@ enum Message {
     ResPowerUse(ResHeader, ResPowerUse),
     ReqClockInfo(ReqHeader),
     ResClockInfo(ResHeader, ResClockInfo),
+    ReqClockSet(ReqHeader, ReqClockSet),
 }
 
 impl Message {
@@ -538,7 +576,8 @@ impl Message {
             Message::ReqCalibration(header) |
             Message::ReqPowerBuffer(header, _) |
             Message::ReqPowerUse(header) |
-            Message::ReqClockInfo(header) => vec.extend(header.as_bytes()),
+            Message::ReqClockInfo(header) |
+            Message::ReqClockSet(header, _) => vec.extend(header.as_bytes()),
             _ => {}
         }
 
@@ -553,6 +592,10 @@ impl Message {
                 Ok(vec)
             },
             Message::ReqSwitch(_, req) => {
+                vec.extend(req.as_bytes());
+                Ok(vec)
+            },
+            Message::ReqClockSet(_, req) => {
                 vec.extend(req.as_bytes());
                 Ok(vec)
             },
@@ -614,6 +657,7 @@ impl Message {
             Message::ResPowerUse(..) => MessageId::ResPowerUse,
             Message::ReqClockInfo(..) => MessageId::ReqClockInfo,
             Message::ResClockInfo(..) => MessageId::ResClockInfo,
+            Message::ReqClockSet(..) => MessageId::ReqClockSet,
         }
     }
 }
@@ -798,6 +842,17 @@ impl<R: Read + Write> Protocol<R> {
             _ => Err(io::Error::new(io::ErrorKind::Other, "unexpected information response"))
         }
     }
+
+    /// Set clock
+    fn set_clock(&mut self, mac: u64, clock_set: ReqClockSet) -> io::Result<()> {
+        let msg = try!(Message::ReqClockSet(ReqHeader{mac: mac}, clock_set).to_payload());
+
+        try!(self.send_message_raw(&msg));
+
+        let msg = try!(self.expect_message(MessageId::Ack));
+
+        Ok(())
+    }
 }
 
 fn run() -> io::Result<()> {
@@ -827,12 +882,16 @@ fn run() -> io::Result<()> {
             let mac = mac.as_str().unwrap(); // XXX
             let mac = u64::from_str_radix(mac, 16).unwrap(); // XXX
 
+            //try!(plugwise.set_clock(mac, ReqClockSet::new_from_tm(now())));
+
             let info = try!(plugwise.get_info(mac));
+
+            println!("{}", info.datetime.to_tm().unwrap().asctime());
 
             //try!(plugwise.switch(mac, !info.relay_state));
             //let _ = try!(plugwise.calibrate(mac));
-            let _ = try!(plugwise.get_power_buffer(mac, 0));
-            let _ = try!(plugwise.get_power_usage(mac));
+            //let _ = try!(plugwise.get_power_buffer(mac, 0));
+            //let _ = try!(plugwise.get_power_usage(mac));
             let _ = try!(plugwise.get_clock_info(mac));
         }
     }
