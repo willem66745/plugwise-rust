@@ -436,7 +436,7 @@ impl ResClockInfo {
     }
 }
 
-const EMPTY: u16 = 0x0000;
+const ACK: u16 = 0x0000;
 const REQ_INITIALIZE: u16 = 0x000A;
 const RES_INITIALIZE: u16 = 0x0011;
 const REQ_INFO: u16 = 0x0023;
@@ -459,7 +459,7 @@ const RES_CLOCK_INFO: u16 = 0x003F;
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u16)]
 enum MessageId {
-    Empty = EMPTY,
+    Ack = ACK,
     ReqInitialize = REQ_INITIALIZE,
     ResInitialize = RES_INITIALIZE,
     ReqInfo = REQ_INFO,
@@ -478,7 +478,7 @@ enum MessageId {
 impl MessageId {
     fn new(id: u16) -> MessageId {
         match id {
-            EMPTY => MessageId::Empty,
+            ACK => MessageId::Ack,
             REQ_INITIALIZE => MessageId::ReqInitialize,
             RES_INITIALIZE => MessageId::ResInitialize,
             REQ_INFO => MessageId::ReqInfo,
@@ -492,7 +492,7 @@ impl MessageId {
             RES_POWER_USE => MessageId::ResPowerUse,
             REQ_CLOCK_INFO => MessageId::ReqClockInfo,
             RES_CLOCK_INFO => MessageId::ResClockInfo,
-            _ => MessageId::Empty
+            _ => MessageId::Ack
         }
     }
 
@@ -503,7 +503,7 @@ impl MessageId {
 
 #[derive(Debug, Clone)]
 enum Message {
-    Empty(ResHeader),
+    Ack(ResHeader),
     ReqInitialize,
     ResInitialize(ResHeader, ResInitialize),
     ReqInfo(ReqHeader),
@@ -565,7 +565,7 @@ impl Message {
         let (decoder, counter) = try!(decoder.decode_u16());
         let msg_id = MessageId::new(msg_id);
 
-        let (decoder, mac) = if msg_id != MessageId::Empty {
+        let (decoder, mac) = if msg_id != MessageId::Ack {
             try!(decoder.decode_u64())
         } else {
             (decoder, 0)
@@ -591,13 +591,13 @@ impl Message {
             MessageId::ResClockInfo =>
                 Ok(Message::ResClockInfo(header, try!(ResClockInfo::new(decoder)))),
             _ => 
-                Ok(Message::Empty(header))
+                Ok(Message::Ack(header))
         }
     }
 
     fn to_message_id(&self) -> MessageId {
         match *self {
-            Message::Empty(..) => MessageId::Empty,
+            Message::Ack(..) => MessageId::Ack,
             Message::ReqInitialize(..) => MessageId::ReqInitialize,
             Message::ResInitialize(..) => MessageId::ResInitialize,
             Message::ReqInfo(..) => MessageId::ReqInfo,
@@ -737,7 +737,7 @@ impl<R: Read + Write> Protocol<R> {
         let msg = try!(Message::ReqSwitch(ReqHeader{mac: mac}, ReqSwitch{on: on}).to_payload());
         try!(self.send_message_raw(&msg));
 
-        let _ = try!(self.expect_message(MessageId::Empty));
+        let _ = try!(self.expect_message(MessageId::Ack));
 
         Ok(())
     }
@@ -759,6 +759,7 @@ impl<R: Read + Write> Protocol<R> {
     fn get_power_buffer(&mut self, mac: u64, addr: u32) -> io::Result<ResPowerBuffer> {
         let msg = try!(Message::ReqPowerBuffer(ReqHeader{mac: mac},
                                                ReqPowerBuffer{logaddr: addr}).to_payload());
+
         try!(self.send_message_raw(&msg));
 
         let msg = try!(self.expect_message(MessageId::ResPowerBuffer));
