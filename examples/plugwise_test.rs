@@ -229,15 +229,18 @@ impl DateTime {
     }
 
     fn to_tm(&self) -> Option<Tm> {
+        let min = (self.minutes % 60) as i32;
+        let hours = ((self.minutes / 60) % 24) as i32;
         let mday = 1 + (self.minutes / (24 * 60)) as i32;
+
         if self.months > 12 || mday > 31 {
             return None;
         }
 
         let tm = Tm {
             tm_sec: 0,
-            tm_min: (self.minutes % 60) as i32,
-            tm_hour: (self.minutes % (24 * 60)) as i32,
+            tm_min: min,
+            tm_hour: hours,
             tm_mday: mday,
             tm_mon: (self.months - 1) as i32,
             tm_year: 100 + (self.year) as i32,
@@ -707,14 +710,14 @@ impl<R: Read + Write> Protocol<R> {
     }
 
     /// Initialize the Plugwise USB stick
-    fn initialize(&mut self) -> io::Result<bool> {
+    fn initialize(&mut self) -> io::Result<ResInitialize> {
         let msg = try!(Message::ReqInitialize.to_payload());
         try!(self.send_message_raw(&msg));
 
         let msg = try!(self.expect_message(MessageId::ResInitialize));
 
         match msg {
-            Message::ResInitialize(_, res) => Ok(res.is_online),
+            Message::ResInitialize(_, res) => Ok(res),
             _ => Err(io::Error::new(io::ErrorKind::Other, "unexpected initialization response"))
         }
     }
