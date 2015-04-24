@@ -110,6 +110,21 @@ impl<R: Read + Write> Protocol<R> {
         }
     }
 
+    fn wait_for_mac_ack(&mut self, expected_mac: u64) -> io::Result<()> {
+        loop {
+            let ack = try!(self.expect_message(MessageId::Ack));
+            if let Message::Ack(_, ack) = ack {
+                if let Some(ack_mac) = ack.mac {
+                    if ack_mac == expected_mac {
+                        break;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Initialize the Plugwise USB stick
     fn initialize(&mut self) -> io::Result<ResInitialize> {
         let msg = try!(Message::ReqInitialize.to_payload());
@@ -141,7 +156,7 @@ impl<R: Read + Write> Protocol<R> {
         let msg = try!(Message::ReqSwitch(ReqHeader{mac: mac}, ReqSwitch{on: on}).to_payload());
         try!(self.send_message_raw(&msg));
 
-        let _ = try!(self.expect_message(MessageId::Ack));
+        try!(self.wait_for_mac_ack(mac));
 
         Ok(())
     }
@@ -203,10 +218,9 @@ impl<R: Read + Write> Protocol<R> {
     /// Set clock
     fn set_clock(&mut self, mac: u64, clock_set: ReqClockSet) -> io::Result<()> {
         let msg = try!(Message::ReqClockSet(ReqHeader{mac: mac}, clock_set).to_payload());
-
         try!(self.send_message_raw(&msg));
 
-        let _ = try!(self.expect_message(MessageId::Ack));
+        try!(self.wait_for_mac_ack(mac));
 
         Ok(())
     }
@@ -239,7 +253,7 @@ fn run() -> io::Result<()> {
             let mac = mac.as_str().unwrap(); // XXX
             let mac = u64::from_str_radix(mac, 16).unwrap(); // XXX
 
-            //try!(plugwise.set_clock(mac, ReqClockSet::new_from_tm(now())));
+            //try!(plugwise.set_clock(mac, ReqClockSet::new_from_tm(time::now())));
 
             let info = try!(plugwise.get_info(mac));
 
