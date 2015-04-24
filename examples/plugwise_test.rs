@@ -206,7 +206,7 @@ impl<R: Read + Write> Protocol<R> {
 
         try!(self.send_message_raw(&msg));
 
-        let msg = try!(self.expect_message(MessageId::Ack));
+        let _ = try!(self.expect_message(MessageId::Ack));
 
         Ok(())
     }

@@ -5,7 +5,7 @@ use time::{Tm, Timespec};
 
 const ADDR_OFFS: u32 = 278528;
 const BYTES_PER_POS: u32 = 32;
-const PULSES_PER_KWS:f64 = 468.9385193;
+const PULSES_PER_KWS: f64 = 468.9385193;
 
 /// Convert log element to memory address
 fn pos2addr(pos: u32) -> u32 {
@@ -41,6 +41,31 @@ impl ReqHeader {
 }
 
 #[derive(Debug, Copy, Clone)]
+pub struct Ack {
+    pub status: u16,
+    pub mac: Option<u64>
+}
+
+impl Ack {
+    /// Decode info response
+    fn new(decoder: raw::RawDataConsumer) -> io::Result<Ack> {
+        let (decoder, status) = try!(decoder.decode_u16());
+        let (decoder, mac) = if decoder.get_remaining() > 0 {
+            let (decoder, mac) = try!(decoder.decode_u64());
+            (decoder, Some(mac))
+        } else {
+            (decoder, None)
+        };
+        try!(decoder.check_fully_consumed());
+
+        Ok(Ack {
+            status: status,
+            mac: mac
+        })
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
 pub struct ResInitialize {
     pub unknown1: u8,
     pub is_online: bool,
@@ -56,7 +81,8 @@ impl ResInitialize {
         let (decoder, is_online) = try!(decoder.decode_u8());
         let (decoder, network_id) = try!(decoder.decode_u64());
         let (decoder, short_id) = try!(decoder.decode_u16());
-        let (_, unknown2) = try!(decoder.decode_u8());
+        let (decoder, unknown2) = try!(decoder.decode_u8());
+        try!(decoder.check_fully_consumed());
 
         Ok(ResInitialize {
             unknown1: unknown1,
@@ -141,7 +167,8 @@ impl ResInfo {
         let (decoder, hz) = try!(decoder.decode_u8());
         let (decoder, hw_ver) = try!(decoder.decode_string(12));
         let (decoder, fw_ver) = try!(decoder.decode_u32());
-        let (_, unknown) = try!(decoder.decode_u8());
+        let (decoder, unknown) = try!(decoder.decode_u8());
+        try!(decoder.check_fully_consumed());
 
         Ok(ResInfo {
             datetime: datetime,
@@ -185,7 +212,8 @@ impl ResCalibration {
         let (decoder, gain_a) = try!(decoder.decode_f32());
         let (decoder, gain_b) = try!(decoder.decode_f32());
         let (decoder, off_total) = try!(decoder.decode_f32());
-        let (_, off_noise) = try!(decoder.decode_f32());
+        let (decoder, off_noise) = try!(decoder.decode_f32());
+        try!(decoder.check_fully_consumed());
 
         Ok(ResCalibration {
             gain_a: gain_a,
@@ -232,7 +260,8 @@ impl ResPowerBuffer {
         let (decoder, pulses3) = try!(decoder.decode_u32());
         let (decoder, datetime4) = try!(decoder.decode_datetime());
         let (decoder, pulses4) = try!(decoder.decode_u32());
-        let (_, logaddr) = try!(decoder.decode_u32());
+        let (decoder, logaddr) = try!(decoder.decode_u32());
+        try!(decoder.check_fully_consumed());
 
         Ok(ResPowerBuffer {
             datetime1: datetime1,
@@ -265,7 +294,8 @@ impl ResPowerUse {
         let (decoder, pulse_hour) = try!(decoder.decode_u32());
         let (decoder, unknown1) = try!(decoder.decode_u16());
         let (decoder, unknown2) = try!(decoder.decode_u16());
-        let (_, unknown3) = try!(decoder.decode_u16());
+        let (decoder, unknown3) = try!(decoder.decode_u16());
+        try!(decoder.check_fully_consumed());
 
         Ok(ResPowerUse {
             pulse_1s: to_kws(pulse_1s as u32),
@@ -284,7 +314,8 @@ pub struct ResClockInfo {
     pub minute: u8,
     pub second: u8,
     pub day_of_week: u8,
-    pub unknown: u16
+    pub unknown1: u8,
+    pub unknown2: u16
 }
 
 impl ResClockInfo {
@@ -293,14 +324,17 @@ impl ResClockInfo {
         let (decoder, minute) = try!(decoder.decode_u8());
         let (decoder, second) = try!(decoder.decode_u8());
         let (decoder, day_of_week) = try!(decoder.decode_u8());
-        let (_, unknown) = try!(decoder.decode_u16());
+        let (decoder, unknown1) = try!(decoder.decode_u8());
+        let (decoder, unknown2) = try!(decoder.decode_u16());
+        try!(decoder.check_fully_consumed());
 
         Ok(ResClockInfo {
             hour: hour,
             minute: minute,
             second: second,
             day_of_week: day_of_week,
-            unknown: unknown
+            unknown1: unknown1,
+            unknown2: unknown2
         })
     }
 }
@@ -406,7 +440,7 @@ impl MessageId {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Ack(ResHeader),
+    Ack(ResHeader, Ack),
     ReqInitialize,
     ResInitialize(ResHeader, ResInitialize),
     ReqInfo(ReqHeader),
@@ -487,9 +521,9 @@ impl Message {
         };
 
         match msg_id {
-            MessageId::ResInitialize => 
+            MessageId::ResInitialize =>
                 Ok(Message::ResInitialize(header, try!(ResInitialize::new(decoder)))),
-            MessageId::ResInfo => 
+            MessageId::ResInfo =>
                 Ok(Message::ResInfo(header, try!(ResInfo::new(decoder)))),
             MessageId::ResCalibration =>
                 Ok(Message::ResCalibration(header, try!(ResCalibration::new(decoder)))),
@@ -499,8 +533,10 @@ impl Message {
                 Ok(Message::ResPowerUse(header, try!(ResPowerUse::new(decoder)))),
             MessageId::ResClockInfo =>
                 Ok(Message::ResClockInfo(header, try!(ResClockInfo::new(decoder)))),
-            _ => 
-                Ok(Message::Ack(header))
+            MessageId::Ack =>
+                Ok(Message::Ack(header, try!(Ack::new(decoder)))),
+            _ =>
+                Err(io::Error::new(io::ErrorKind::Other, "Unsupported response message received"))
         }
     }
 

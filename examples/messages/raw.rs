@@ -112,14 +112,6 @@ impl<'a> RawDataConsumer<'a> {
         }
     }
 
-    // /// Get the remainder of the data as a string
-    // fn remainder(&self) -> io::Result<&'a str> {
-    //     match std::str::from_utf8(self.buf) {
-    //         Ok(value) => Ok(value),
-    //         Err(err) => Err(io::Error::new(io::ErrorKind::Other, err))
-    //     }
-    // }
-
     pub fn decode_datetime(&self) -> io::Result<(RawDataConsumer, DateTime)> {
         let (result, _) = try!(self.decode_u32());
 
@@ -128,6 +120,18 @@ impl<'a> RawDataConsumer<'a> {
         let (_, minutes) = try!(result1.decode_u16());
 
         Ok((result, DateTime::new_raw(year, months, minutes)))
+    }
+
+    pub fn check_fully_consumed(&self) -> io::Result<()> {
+        if self.buf.len() == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::new(io::ErrorKind::Other, "unconsumed data detected"))
+        }
+    }
+
+    pub fn get_remaining(&self) -> usize {
+        self.buf.len()
     }
 }
 
