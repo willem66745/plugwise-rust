@@ -462,8 +462,6 @@ impl Message {
     pub fn to_payload(&self) -> io::Result<Vec<u8>> {
         let mut vec = vec![];
 
-        println!("> {:?}", *self); // XXX
-
         vec.extend(self.to_message_id().as_bytes());
 
         // handle header (generically)

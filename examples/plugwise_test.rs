@@ -19,16 +19,29 @@ const FOOTER: [u8; 2] = [13, 10];
 const EOM: u8 = 10;
 const CRC_SIZE: usize = 4;
 
-struct Protocol<R> {
-    reader: io::BufReader<R>
+enum ProtocolSnoop<'a> {
+    Nothing,
+    Debug(&'a mut Write),
+    Raw(&'a mut Write),
+    All(&'a mut Write)
 }
 
-impl<R: Read + Write> Protocol<R> {
+struct Protocol<'a, R> {
+    reader: io::BufReader<R>,
+    snoop: ProtocolSnoop<'a>
+}
+
+impl<'a, R: Read + Write> Protocol<'a, R> {
     /// Wrap IO entity for Plugwise protocol handling
-    fn new(port: R) -> Protocol<R> {
+    fn new(port: R) -> Protocol<'a, R> {
         Protocol {
-            reader: io::BufReader::with_capacity(1000, port)
+            reader: io::BufReader::with_capacity(1000, port),
+            snoop: ProtocolSnoop::Nothing
         }
+    }
+
+    fn set_snoop(&mut self, snoop: ProtocolSnoop<'a>) {
+        self.snoop = snoop;
     }
 
     /// Send payload
@@ -39,6 +52,17 @@ impl<R: Read + Write> Protocol<R> {
         try!(self.reader.get_mut().write(payload));
         try!(self.reader.get_mut().write(&crc));
         try!(self.reader.get_mut().write(&FOOTER));
+
+        match self.snoop {
+            ProtocolSnoop::Raw(ref mut writer) |
+            ProtocolSnoop::All(ref mut writer) => {
+                try!(writer.write_fmt(format_args!("> ")));
+                try!(writer.write(payload));
+                try!(writer.write(&crc));
+                try!(writer.write(&[b'\n']));
+            },
+            _ => {}
+        }
 
         Ok(())
     }
@@ -61,7 +85,35 @@ impl<R: Read + Write> Protocol<R> {
                                                       Some(v) => v
                 };
 
+                match self.snoop {
+                    ProtocolSnoop::Raw(ref mut writer) |
+                    ProtocolSnoop::All(ref mut writer) => {
+                        let (_, part) = buf.split_at(header_pos + HEADER.len());
+                        let (part, _) = part.split_at(footer_pos - (header_pos + HEADER.len()));
+                        try!(writer.write_fmt(format_args!("< ")));
+                        try!(writer.write(part));
+                        try!(writer.write(&[b'\n']));
+                    },
+                    _ => {}
+                }
+
                 return Ok((buf, header_pos, footer_pos))
+            }
+            else
+            {
+                match self.snoop {
+                    ProtocolSnoop::All(ref mut writer) => {
+                        let footer_pos = buf.windows(FOOTER.len()).rposition(|x| *x==FOOTER);
+
+                        if let Some(pos) = footer_pos {
+                            let (part, _) = buf.split_at(pos);
+                            try!(writer.write_fmt(format_args!("< ")));
+                            try!(writer.write(part));
+                            try!(writer.write(&[b'\n']));
+                        }
+                    }
+                    _ => {}
+                }
             }
         }
     }
@@ -102,7 +154,12 @@ impl<R: Read + Write> Protocol<R> {
             let msg = try!(self.receive_message_raw());
             let msg = try!(Message::from_payload(&msg));
 
-            println!("< {:?}", msg); // XXX
+            match self.snoop {
+                ProtocolSnoop::Debug(ref mut writer) => {
+                    try!(writer.write_fmt(format_args!("< {:?}\n", msg)));
+                },
+                _ => {}
+            }
 
             if msg.to_message_id() == expected_message_id {
                 return Ok(msg)
@@ -125,10 +182,22 @@ impl<R: Read + Write> Protocol<R> {
         Ok(())
     }
 
+    /// Send message
+    fn send_message(&mut self, message: Message) -> io::Result<()> {
+        match self.snoop {
+            ProtocolSnoop::Debug(ref mut writer) => {
+                try!(writer.write_fmt(format_args!("> {:?}\n", message)));
+            },
+            _ => {}
+        }
+        let msg = try!(message.to_payload());
+        try!(self.send_message_raw(&msg));
+        Ok(())
+    }
+
     /// Initialize the Plugwise USB stick
     fn initialize(&mut self) -> io::Result<ResInitialize> {
-        let msg = try!(Message::ReqInitialize.to_payload());
-        try!(self.send_message_raw(&msg));
+        try!(self.send_message(Message::ReqInitialize));
 
         let msg = try!(self.expect_message(MessageId::ResInitialize));
 
@@ -140,8 +209,7 @@ impl<R: Read + Write> Protocol<R> {
 
     /// Get info from a circle
     fn get_info(&mut self, mac: u64) -> io::Result<ResInfo> {
-        let msg = try!(Message::ReqInfo(ReqHeader{mac: mac}).to_payload());
-        try!(self.send_message_raw(&msg));
+        try!(self.send_message(Message::ReqInfo(ReqHeader{mac: mac})));
 
         let msg = try!(self.expect_message(MessageId::ResInfo));
 
@@ -153,8 +221,7 @@ impl<R: Read + Write> Protocol<R> {
 
     /// Switch a circle
     fn switch(&mut self, mac: u64, on: bool) -> io::Result<()> {
-        let msg = try!(Message::ReqSwitch(ReqHeader{mac: mac}, ReqSwitch{on: on}).to_payload());
-        try!(self.send_message_raw(&msg));
+        try!(self.send_message(Message::ReqSwitch(ReqHeader{mac: mac}, ReqSwitch{on: on})));
 
         try!(self.wait_for_mac_ack(mac));
 
@@ -163,8 +230,7 @@ impl<R: Read + Write> Protocol<R> {
 
     /// Calibrate a circle
     fn calibrate(&mut self, mac: u64) -> io::Result<ResCalibration> {
-        let msg = try!(Message::ReqCalibration(ReqHeader{mac: mac}).to_payload());
-        try!(self.send_message_raw(&msg));
+        try!(self.send_message(Message::ReqCalibration(ReqHeader{mac: mac})));
 
         let msg = try!(self.expect_message(MessageId::ResCalibration));
 
@@ -176,10 +242,8 @@ impl<R: Read + Write> Protocol<R> {
 
     /// Retrieve power buffer
     fn get_power_buffer(&mut self, mac: u64, addr: u32) -> io::Result<ResPowerBuffer> {
-        let msg = try!(Message::ReqPowerBuffer(ReqHeader{mac: mac},
-                                               ReqPowerBuffer{logaddr: addr}).to_payload());
-
-        try!(self.send_message_raw(&msg));
+        try!(self.send_message( Message::ReqPowerBuffer(ReqHeader{mac: mac},
+                                                        ReqPowerBuffer{logaddr: addr})));
 
         let msg = try!(self.expect_message(MessageId::ResPowerBuffer));
 
@@ -191,8 +255,7 @@ impl<R: Read + Write> Protocol<R> {
 
     /// Retrieve actual power usage
     fn get_power_usage(&mut self, mac: u64) -> io::Result<ResPowerUse> {
-        let msg = try!(Message::ReqPowerUse(ReqHeader{mac: mac}).to_payload());
-        try!(self.send_message_raw(&msg));
+        try!(self.send_message(Message::ReqPowerUse(ReqHeader{mac: mac})));
 
         let msg = try!(self.expect_message(MessageId::ResPowerUse));
 
@@ -204,8 +267,7 @@ impl<R: Read + Write> Protocol<R> {
 
     /// Retrieve actual power usage
     fn get_clock_info(&mut self, mac: u64) -> io::Result<ResClockInfo> {
-        let msg = try!(Message::ReqClockInfo(ReqHeader{mac: mac}).to_payload());
-        try!(self.send_message_raw(&msg));
+        try!(self.send_message(Message::ReqClockInfo(ReqHeader{mac: mac})));
 
         let msg = try!(self.expect_message(MessageId::ResClockInfo));
 
@@ -217,8 +279,7 @@ impl<R: Read + Write> Protocol<R> {
 
     /// Set clock
     fn set_clock(&mut self, mac: u64, clock_set: ReqClockSet) -> io::Result<()> {
-        let msg = try!(Message::ReqClockSet(ReqHeader{mac: mac}, clock_set).to_payload());
-        try!(self.send_message_raw(&msg));
+        try!(self.send_message(Message::ReqClockSet(ReqHeader{mac: mac}, clock_set)));
 
         try!(self.wait_for_mac_ack(mac));
 
@@ -244,7 +305,11 @@ fn run() -> io::Result<()> {
 
     port.set_timeout(Duration::milliseconds(1000));
 
+    let mut debug = io::stdout();
+
     let mut plugwise = Protocol::new(port);
+
+    plugwise.set_snoop(ProtocolSnoop::Raw(&mut debug));
 
     let _ = try!(plugwise.initialize());
 
