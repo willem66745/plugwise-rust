@@ -1,5 +1,8 @@
+extern crate crc16;
+
 pub mod sim;
 pub mod real;
+pub mod stub;
 
 pub trait System {
     fn register_plug(&mut self, id: &str) -> Box<Plug>;

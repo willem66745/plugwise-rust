@@ -2,9 +2,9 @@
 extern crate time;
 extern crate crc16;
 extern crate toml;
+extern crate plugwise;
 
 mod messages;
-mod stub;
 
 use std::io;
 use std::io::prelude::*;
@@ -14,6 +14,7 @@ use crc16::*;
 use std::fs::File;
 use std::env::home_dir;
 use messages::*;
+use plugwise::stub;
 
 const HEADER: [u8; 4] = [5, 5, 3, 3];
 const FOOTER: [u8; 2] = [13, 10];
