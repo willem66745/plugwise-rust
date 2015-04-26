@@ -279,3 +279,104 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    // Note that these test relies on that the implemention and stub yields
+    // errors and panics when something strange happens.
+
+    use super::super::stub;
+    use super::*;
+    use time;
+
+    #[test]
+    fn stub_initialize() {
+        let port = stub::Stub::new();
+        let mut protocol = Protocol::new(port);
+
+        assert_eq!(true, protocol.initialize().unwrap().is_online);
+    }
+
+    #[test]
+    fn stub_switch_and_info() {
+        let mac1 = 0x0123456789abcdef;
+        let mac2 = 0xfedcba9876543210;
+        let port = stub::Stub::new();
+        let mut protocol = Protocol::new(port);
+
+        let info1 = protocol.get_info(mac1).unwrap();
+        let info2 = protocol.get_info(mac2).unwrap();
+
+        assert_eq!(false, info1.relay_state);
+        assert_eq!(false, info2.relay_state);
+
+        protocol.switch(mac1, true).unwrap();
+        protocol.switch(mac2, false).unwrap();
+
+        let info1 = protocol.get_info(mac1).unwrap();
+        let info2 = protocol.get_info(mac2).unwrap();
+
+        assert_eq!(true, info1.relay_state);
+        assert_eq!(false, info2.relay_state);
+
+        protocol.switch(mac2, true).unwrap();
+
+        let info1 = protocol.get_info(mac1).unwrap();
+        let info2 = protocol.get_info(mac2).unwrap();
+
+        assert_eq!(true, info1.relay_state);
+        assert_eq!(true, info2.relay_state);
+
+        protocol.switch(mac1, false).unwrap();
+
+        let info1 = protocol.get_info(mac1).unwrap();
+        let info2 = protocol.get_info(mac2).unwrap();
+
+        assert_eq!(false, info1.relay_state);
+        assert_eq!(true, info2.relay_state);
+    }
+
+    #[test]
+    fn stub_set_clock() {
+        let mac = 0x0123456789abcdef;
+        let port = stub::Stub::new();
+        let mut protocol = Protocol::new(port);
+
+        protocol.set_clock(mac, ReqClockSet::new_from_tm(time::now())).unwrap();
+    }
+
+    #[test]
+    fn stub_calibrate() {
+        let mac = 0x0123456789abcdef;
+        let port = stub::Stub::new();
+        let mut protocol = Protocol::new(port);
+
+        let _ = protocol.calibrate(mac).unwrap();
+    }
+
+    #[test]
+    fn stub_get_power_buffer() {
+        let mac = 0x0123456789abcdef;
+        let port = stub::Stub::new();
+        let mut protocol = Protocol::new(port);
+
+        let _ = protocol.get_power_buffer(mac, 0).unwrap();
+    }
+
+    #[test]
+    fn stub_get_power_usage() {
+        let mac = 0x0123456789abcdef;
+        let port = stub::Stub::new();
+        let mut protocol = Protocol::new(port);
+
+        let _ = protocol.get_power_usage(mac).unwrap();
+    }
+
+    #[test]
+    fn stub_get_clock_info() {
+        let mac = 0x0123456789abcdef;
+        let port = stub::Stub::new();
+        let mut protocol = Protocol::new(port);
+
+        let _ = protocol.get_clock_info(mac).unwrap();
+    }
+}
