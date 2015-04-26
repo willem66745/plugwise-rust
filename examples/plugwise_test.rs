@@ -4,8 +4,6 @@ extern crate crc16;
 extern crate toml;
 extern crate plugwise;
 
-mod protocol;
-
 use std::io;
 use std::io::prelude::*;
 //use serial::prelude::*;
@@ -14,7 +12,7 @@ use crc16::*;
 use std::fs::File;
 use std::env::home_dir;
 use plugwise::stub;
-use protocol::*;
+use plugwise::protocol::*;
 
 fn run() -> io::Result<()> {
     let mut path = home_dir().unwrap(); // XXX

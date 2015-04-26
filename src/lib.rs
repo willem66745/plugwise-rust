@@ -1,8 +1,10 @@
 extern crate crc16;
+extern crate time;
 
 pub mod sim;
 pub mod real;
 pub mod stub;
+pub mod protocol;
 
 pub trait System {
     fn register_plug(&mut self, id: &str) -> Box<Plug>;
