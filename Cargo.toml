@@ -6,7 +6,7 @@ authors = ["Willem <willem66745@gmail.com>"]
 [dependencies]
 crc16 = "*"
 time = "*"
+serial = "*"
 
 [dev-dependencies]
-serial = "*"
 toml = "*"
