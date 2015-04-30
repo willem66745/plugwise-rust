@@ -30,7 +30,7 @@ impl<'a> RawDataConsumer<'a> {
     }
 
     // FIXME: Rust generics doesn't allow yet to create a generic version for u8, u16, u32, u64
- 
+
     /// Consume a `u8` from the buffer
     pub fn decode_u8(&self) -> io::Result<(RawDataConsumer, u8)> {
         let (buf, result) = try!(self.consume(2));
@@ -134,4 +134,3 @@ impl<'a> RawDataConsumer<'a> {
         self.buf.len()
     }
 }
-

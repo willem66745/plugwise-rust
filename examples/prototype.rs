@@ -1,3 +1,4 @@
+
 extern crate time;
 extern crate serial;
 extern crate plugwise;
@@ -47,7 +48,7 @@ trait Circle {
 }
 
 impl<'a, I:Read+Write+'a> Plugwise<'a> for PlugwiseInner<'a, I> {
-    fn create_circle(&self, mac: u64) -> Box<Circle + 'a> {
+    fn create_circle(&self, mac: u64) -> Box<Circle+ 'a> {
         //Box::new(CircleInner::new(self.protocol.clone(), mac))
         Box::new(CircleInner {
             protocol: self.protocol.clone(),
@@ -72,7 +73,7 @@ impl<'a, I:Read+Write+'a> Circle for CircleInner<'a, I> {
     }
 }
 
-fn new_plugwise<'a>(device: &str) -> io::Result<Box<Plugwise<'a> + 'a>> {
+fn new_plugwise<'a>(device: &str) -> io::Result<Box<Plugwise<'a>+ 'a>> {
     let mut port = try!(serial::open(device));
     try!(port.configure(|settings| {
         settings.set_baud_rate(serial::Baud115200);
@@ -87,7 +88,7 @@ fn new_plugwise<'a>(device: &str) -> io::Result<Box<Plugwise<'a> + 'a>> {
     Ok(Box::new(plugwise))
 }
 
-fn new_stub<'a>() -> io::Result<Box<Plugwise<'a> + 'a>> {
+fn new_stub<'a>() -> io::Result<Box<Plugwise<'a>+ 'a>> {
     let port = stub::Stub::new();
 
     let plugwise = try!(PlugwiseInner::initialize(port));
@@ -105,5 +106,3 @@ fn main() {
     circle.switch_on().unwrap();
     circle.switch_off().unwrap();
 }
-
-

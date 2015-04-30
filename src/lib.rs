@@ -1,3 +1,4 @@
+
 extern crate crc16;
 extern crate time;
 
@@ -18,4 +19,3 @@ pub trait Plug {
     fn switch_on(&mut self);
     fn switch_off(&mut self);
 }
-

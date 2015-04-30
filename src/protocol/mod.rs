@@ -3,7 +3,9 @@ mod messages;
 use std::io;
 use std::io::prelude::*;
 use crc16::*;
-pub use self::messages::{ReqClockSet, ResInitialize, ResInfo, ResCalibration, ResPowerBuffer, ResPowerUse, ResClockInfo, DateTime};
+pub use self::messages::{ReqClockSet, ResInitialize, ResInfo,
+                         ResCalibration, ResPowerBuffer, ResPowerUse,
+                         ResClockInfo, DateTime};
 use self::messages::{Message, MessageId, ReqHeader, ReqSwitch, ReqPowerBuffer};
 
 const HEADER: [u8; 4] = [5, 5, 3, 3];
