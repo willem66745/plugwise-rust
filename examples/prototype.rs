@@ -73,7 +73,7 @@ impl<'a, I:Read+Write+'a> Circle for CircleInner<'a, I> {
     }
 }
 
-fn new_plugwise<'a>(device: &str) -> io::Result<Box<Plugwise<'a>+ 'a>> {
+fn plugwise_device<'a>(device: &str) -> io::Result<Box<Plugwise<'a>+ 'a>> {
     let mut port = try!(serial::open(device));
     try!(port.configure(|settings| {
         settings.set_baud_rate(serial::Baud115200);
@@ -88,7 +88,7 @@ fn new_plugwise<'a>(device: &str) -> io::Result<Box<Plugwise<'a>+ 'a>> {
     Ok(Box::new(plugwise))
 }
 
-fn new_stub<'a>() -> io::Result<Box<Plugwise<'a>+ 'a>> {
+fn plugwise_simulator<'a>() -> io::Result<Box<Plugwise<'a>+ 'a>> {
     let port = stub::Stub::new();
 
     let plugwise = try!(PlugwiseInner::initialize(port));
@@ -99,8 +99,8 @@ fn new_stub<'a>() -> io::Result<Box<Plugwise<'a>+ 'a>> {
 fn main() {
     let mut debug = io::stdout();
 
-    //let plugwise = new_plugwise("/dev/ttyUSB0").unwrap();
-    let plugwise = new_stub().unwrap();
+    //let plugwise = plugwise_device("/dev/ttyUSB0").unwrap();
+    let plugwise = plugwise_simulator().unwrap();
     plugwise.set_snoop(ProtocolSnoop::Debug(&mut debug));
     let circle = plugwise.create_circle(0x0123456789ABCDEF);
     circle.switch_on().unwrap();
