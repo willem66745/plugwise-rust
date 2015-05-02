@@ -46,6 +46,7 @@ trait Plugwise<'a> {
 trait Circle {
     fn switch_on(&self) -> io::Result<()>;
     fn switch_off(&self) -> io::Result<()>;
+    fn is_switched_on(&self) -> io::Result<bool>;
 }
 
 impl<'a, I:Read+Write+'a> Plugwise<'a> for PlugwiseInner<'a, I> {
@@ -72,6 +73,11 @@ impl<'a, I:Read+Write+'a> Circle for CircleInner<'a, I> {
     fn switch_off(&self) -> io::Result<()> {
         try!(self.protocol.borrow_mut().switch(self.mac, false));
         Ok(())
+    }
+
+    fn is_switched_on(&self) -> io::Result<bool> {
+        let info = try!(self.protocol.borrow_mut().get_info(self.mac));
+        Ok(info.relay_state)
     }
 }
 
@@ -106,5 +112,7 @@ fn main() {
     plugwise.set_snoop(ProtocolSnoop::Debug(&mut debug));
     let circle = plugwise.create_circle(0x0123456789ABCDEF).unwrap();
     circle.switch_on().unwrap();
+    println!("{}", circle.is_switched_on().unwrap());
     circle.switch_off().unwrap();
+    println!("{}", circle.is_switched_on().unwrap());
 }
