@@ -18,7 +18,8 @@ struct PlugwiseInner<'a, I> {
 
 struct CircleInner<'a, I> {
     protocol: Rc<RefCell<Protocol<'a, I>>>,
-    mac: u64
+    mac: u64,
+    calibration_data: ResCalibration
 }
 
 impl<'a, I: Read+Write+'a> PlugwiseInner<'a, I> {
@@ -38,7 +39,7 @@ impl<'a, I: Read+Write+'a> PlugwiseInner<'a, I> {
 }
 
 trait Plugwise<'a> {
-    fn create_circle(&self, mac: u64) -> Box<Circle + 'a>;
+    fn create_circle(&self, mac: u64) -> io::Result<Box<Circle + 'a>>;
     fn set_snoop(&self, snoop: ProtocolSnoop<'a>);
 }
 
@@ -48,12 +49,13 @@ trait Circle {
 }
 
 impl<'a, I:Read+Write+'a> Plugwise<'a> for PlugwiseInner<'a, I> {
-    fn create_circle(&self, mac: u64) -> Box<Circle+ 'a> {
-        //Box::new(CircleInner::new(self.protocol.clone(), mac))
-        Box::new(CircleInner {
+    fn create_circle(&self, mac: u64) -> io::Result<Box<Circle+ 'a>> {
+        let calibration_data = try!(self.protocol.borrow_mut().calibrate(mac));
+        Ok(Box::new(CircleInner {
             protocol: self.protocol.clone(),
-            mac: mac
-        })
+            mac: mac,
+            calibration_data: calibration_data
+        }))
     }
 
     fn set_snoop(&self, snoop: ProtocolSnoop<'a>) {
@@ -102,7 +104,7 @@ fn main() {
     //let plugwise = plugwise_device("/dev/ttyUSB0").unwrap();
     let plugwise = plugwise_simulator().unwrap();
     plugwise.set_snoop(ProtocolSnoop::Debug(&mut debug));
-    let circle = plugwise.create_circle(0x0123456789ABCDEF);
+    let circle = plugwise.create_circle(0x0123456789ABCDEF).unwrap();
     circle.switch_on().unwrap();
     circle.switch_off().unwrap();
 }
