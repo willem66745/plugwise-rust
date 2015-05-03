@@ -13,10 +13,16 @@ const FOOTER: [u8; 2] = [13, 10];
 const EOM: u8 = 10;
 const CRC_SIZE: usize = 4;
 
+/// Plugwise communication snooper setting.
 pub enum ProtocolSnoop<'a> {
+    /// Log nothing (default).
     Nothing,
+    /// Log developer readable data of the Plugwise communication.
     Debug(&'a mut Write),
+    /// Log the relevant raw serial communication of the Plugwise communication.
     Raw(&'a mut Write),
+    /// Log all raw serial communication of the Plugwise communication (very verbose, which
+    /// actually doesn't make much sense, unless you're a developer of Plugwise devices).
     All(&'a mut Write)
 }
 

@@ -1,3 +1,22 @@
+//! This crate implements a part of the Plugwise Circle and Plugwise Circle+ protocol (tested against
+//! 2010 firmware). It still requires the official tooling to configure and to link the plugs. This
+//! library supports the following operations:
+//!
+//! * switch a Circle on or off;
+//! * retrieve the relay status of a Circle;
+//! * actual power usage of a Circle (in Watts);
+//! * power usage over time (retrieved per hour in kWh);
+//! * set clock of a Circle;
+//! * get actual clock of a Circle.
+//!
+//! This library is inspired on a
+//! [Python implemention](https://bitbucket.org/hadara/python-plugwise/wiki/Home) which was based
+//! on the analysis of the protocol by
+//! [Maarten Damen](http://www.maartendamen.com/category/plugwise-unleashed/).
+//!
+//! This crate is tested against Linux, but since this crate is based on
+//! [serial-rs](../serial/index.html) crate, it is expected this crate also works on Windows and
+//! Mac OS X.
 
 extern crate crc16;
 extern crate time;
@@ -42,18 +61,32 @@ impl<'a, I: Read+Write+'a> PlugwiseInner<'a, I> {
     }
 }
 
+/// A abstract representation of the Plugwise USB stick.
 pub trait Plugwise<'a> {
+    /// Register a Circle (a wall outlet switch) and returns a abstract representation of the
+    /// Circle.
     fn create_circle(&self, mac: u64) -> io::Result<Box<Circle + 'a>>;
+    /// Add a `io::Write` instance to log the communication.
     fn set_snoop(&self, snoop: ProtocolSnoop<'a>);
 }
 
+/// A abstract representation of the Plugwise Circle/Circle+.
 pub trait Circle {
+    /// Switch the relay of Circle on.
     fn switch_on(&self) -> io::Result<()>;
+    /// Switch the relay of Circle off.
     fn switch_off(&self) -> io::Result<()>;
+    /// Retrieve the relay status of the Circle.
     fn is_switched_on(&self) -> io::Result<bool>;
+    /// Get actual power usage of the Circle in Watts (sampled over the last 8 seconds).
     fn get_actual_watt_usage(&self) -> io::Result<f64>;
+    /// Get the actual clock state of the Circle (in UTC).
     fn get_clock(&self) -> io::Result<time::Tm>;
+    /// Set the clock state of the Circle.
     fn set_clock(&self, tm: time::Tm) -> io::Result<()>;
+    /// Retrieve a map of power usages over time. To retrieve only the last logged items specify
+    /// the number of elements to retrieve in `max_entries`. Each entry contains the power usage of
+    /// one hour.
     fn get_power_buffer(&self, max_entries: Option<u32>) -> io::Result<BTreeMap<time::Timespec, f64>>;
 }
 
@@ -154,6 +187,18 @@ impl <'a, I:Read+Write+'a>  CircleInner<'a, I> {
     }
 }
 
+/// Create a instance to communicate with the Plugwise USB stick and Circle/Circle+ devices.
+///
+/// ```ignore
+/// extern crate plugwise;
+///
+/// // instantiate and initiate communication with a Plugwise USB stick
+/// let plugwise = plugwise::plugwise_device("/dev/ttyUSB0").unwrap();
+/// // create a Circle (a real MAC must be used, or a Timeout would occur)
+/// let circle = plugwise.create_circle(0x01234567890ABCDEF).unwrap();
+/// // switch the Circle on
+/// circle.switch_on().unwrap();
+/// ```
 pub fn plugwise_device<'a>(device: &str) -> io::Result<Box<Plugwise<'a>+ 'a>> {
     let mut port = try!(serial::open(device));
     try!(port.configure(|settings| {
@@ -169,6 +214,19 @@ pub fn plugwise_device<'a>(device: &str) -> io::Result<Box<Plugwise<'a>+ 'a>> {
     Ok(Box::new(plugwise))
 }
 
+/// Create a simulation instance for integration or test purposes to use this library without the
+/// need of the real hardware.
+///
+/// ```
+/// extern crate plugwise;
+///
+/// // instantiate a simulation version of Plugwise
+/// let stub = plugwise::plugwise_simulator().unwrap();
+/// // create a Circle (simulation allows any MAC to be used)
+/// let circle = stub.create_circle(0x01234567890ABCDEF).unwrap();
+/// // switch the Circle on
+/// circle.switch_on().unwrap();
+/// ```
 pub fn plugwise_simulator<'a>() -> io::Result<Box<Plugwise<'a>+ 'a>> {
     let port = stub::Stub::new();
 
