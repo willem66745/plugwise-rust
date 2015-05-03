@@ -1,13 +1,14 @@
 
 extern crate plugwise;
 extern crate toml;
+extern crate time;
 
-use std::io;
+//use std::io;
 use std::io::prelude::*;
 use std::env::home_dir;
 use std::fs::File;
 
-use plugwise::ProtocolSnoop;
+//use plugwise::ProtocolSnoop;
 
 fn main() {
     let mut path = home_dir().unwrap(); // XXX
@@ -17,10 +18,12 @@ fn main() {
     file.read_to_string(&mut config).unwrap();
     let config = toml::Parser::new(&config).parse().unwrap(); // XXX
 
-    let mut debug = io::stdout();
-    //let plugwise = plugwise::plugwise_device("/dev/ttyUSB0").unwrap();
-    let plugwise = plugwise::plugwise_simulator().unwrap();
-    plugwise.set_snoop(ProtocolSnoop::Debug(&mut debug));
+    //let mut debug = io::stdout();
+    let plugwise = plugwise::plugwise_device("/dev/ttyUSB0").unwrap();
+    //let plugwise = plugwise::plugwise_simulator().unwrap();
+    //plugwise.set_snoop(ProtocolSnoop::Debug(&mut debug));
+
+    let week = time::Duration::weeks(1);
 
     for (_, item) in config {
         if let Some(mac) = item.as_table().unwrap().get("mac") { // XXX
@@ -28,10 +31,20 @@ fn main() {
             let mac = u64::from_str_radix(mac, 16).unwrap(); // XXX
 
             let circle = plugwise.create_circle(mac).unwrap();
-            circle.switch_on().unwrap();
-            println!("{}", circle.is_switched_on().unwrap());
-            circle.switch_off().unwrap();
-            println!("{}", circle.is_switched_on().unwrap());
+            //circle.switch_on().unwrap();
+            //println!("{}", circle.is_switched_on().unwrap());
+            //circle.switch_off().unwrap();
+            //println!("{}", circle.is_switched_on().unwrap());
+            let power = circle.get_actual_watt_usage().unwrap();
+            println!("Plug: {:08X}", mac);
+            println!("Actual usage: {} W", power);
+            let buffer = circle.get_power_buffer(Some(week.num_hours() as u32)).unwrap();
+            if let Some(last_timestamp) = buffer.keys().last() {
+                let kws = buffer.iter()
+                                .filter(|&(&k, _)| (*last_timestamp - k) < week)
+                                .fold(0.0, |acc, (_, &v)| acc + v);
+                println!("Power usage last week: {} kWh", kws);
+            }
         }
     }
 }

@@ -12,6 +12,7 @@ use time::Duration;
 use serial::prelude::*;
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 
 pub use protocol::ProtocolSnoop;
 
@@ -53,6 +54,7 @@ pub trait Circle {
     fn get_actual_watt_usage(&self) -> io::Result<f64>;
     fn get_clock(&self) -> io::Result<time::Tm>;
     fn set_clock(&self, tm: time::Tm) -> io::Result<()>;
+    fn get_power_buffer(&self, max_entries: Option<u32>) -> io::Result<BTreeMap<time::Timespec, f64>>;
 }
 
 impl<'a, I:Read+Write+'a> Plugwise<'a> for PlugwiseInner<'a, I> {
@@ -111,6 +113,45 @@ impl<'a, I:Read+Write+'a> Circle for CircleInner<'a, I> {
         try!(self.protocol.borrow_mut().set_clock(self.mac, clock_set));
         Ok(())
     }
+
+
+    fn get_power_buffer(&self, max_entries: Option<u32>) -> io::Result<BTreeMap<time::Timespec, f64>> {
+        let mut result = BTreeMap::<time::Timespec, f64>::new();
+        let info = try!(self.protocol.borrow_mut().get_info(self.mac));
+        let start = match max_entries {
+            None => 0,
+            Some(n) => {
+                let n_of_calls = n / 4; // each power buffer request retrieves 4 power usage statics
+                if info.last_logaddr > n_of_calls {
+                    info.last_logaddr - n_of_calls
+                } else {
+                    0
+                }
+            }
+        };
+
+        for index in (start..(info.last_logaddr + 1)) {
+            let buffer = try!(self.protocol.borrow_mut().get_power_buffer(self.mac, index));
+
+            self.get_power_buffer_helper(&mut result, &buffer.datetime1, &buffer.pulses1);
+            self.get_power_buffer_helper(&mut result, &buffer.datetime2, &buffer.pulses2);
+            self.get_power_buffer_helper(&mut result, &buffer.datetime3, &buffer.pulses3);
+            self.get_power_buffer_helper(&mut result, &buffer.datetime4, &buffer.pulses4);
+        }
+
+        Ok(result)
+    }
+}
+
+impl <'a, I:Read+Write+'a>  CircleInner<'a, I> {
+    fn get_power_buffer_helper(&self,
+                               map:&mut BTreeMap<time::Timespec, f64>,
+                               datetime: &protocol::DateTime,
+                               pulses: &protocol::Pulses) {
+        if let Some(tm) = datetime.to_tm() {
+            let _ = map.insert(tm.to_timespec(), pulses.to_kwh(self.calibration_data));
+        }
+    }
 }
 
 pub fn plugwise_device<'a>(device: &str) -> io::Result<Box<Plugwise<'a>+ 'a>> {
@@ -147,4 +188,5 @@ fn smoke_external_stub() {
     circle.get_actual_watt_usage().unwrap();
     let tm = circle.get_clock().unwrap();
     circle.set_clock(tm).unwrap();
+    circle.get_power_buffer(None);
 }

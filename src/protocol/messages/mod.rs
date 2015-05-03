@@ -53,6 +53,11 @@ impl Pulses {
     pub fn to_watts(&self, calibration: ResCalibration) -> f64 {
         self.to_kw(calibration) * 1000.0
     }
+
+    /// Convert to kWh
+    pub fn to_kwh(&self, calibration: ResCalibration) -> f64 {
+        self.to_kw(calibration) * (self.timespan as f64 / 3600.0)
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
