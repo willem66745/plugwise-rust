@@ -5,7 +5,7 @@ use time::{Tm, Timespec};
 
 const ADDR_OFFS: u32 = 278528;
 const BYTES_PER_POS: u32 = 32;
-const PULSES_PER_KWS: f64 = 468.9385193;
+const PULSES_PER_KW: f64 = 468.9385193;
 
 /// Convert log element to memory address
 fn pos2addr(pos: u32) -> u32 {
@@ -31,18 +31,8 @@ impl Pulses {
         }
     }
 
-    /// Convert pulses to kWs
-    fn to_kws(&self, calibration: ResCalibration) -> f64 {
-        let pulses = self.correct(calibration);
-        pulses / PULSES_PER_KWS
-    }
-
-    pub fn to_watts(&self, calibration: ResCalibration) -> f64 {
-        self.to_kws(calibration) * 1000.0
-    }
-
     /// Retrieve corrected number of pulses per second
-    fn correct(&self, calibration: ResCalibration) -> f64 {
+    fn to_pulses_per_second(&self, calibration: ResCalibration) -> f64 {
         if self.pulses == 0 {
             0.0
         } else {
@@ -51,6 +41,17 @@ impl Pulses {
             (noise_corrected.powi(2) * calibration.gain_b as f64) +
                 (noise_corrected * calibration.gain_a as f64) + calibration.off_total as f64
         }
+    }
+
+    /// Convert pulses to kW
+    fn to_kw(&self, calibration: ResCalibration) -> f64 {
+        let pulses = self.to_pulses_per_second(calibration);
+        pulses / PULSES_PER_KW
+    }
+
+    /// Convert to Watts
+    pub fn to_watts(&self, calibration: ResCalibration) -> f64 {
+        self.to_kw(calibration) * 1000.0
     }
 }
 
