@@ -5,7 +5,7 @@ use time::{Tm, Timespec};
 
 const ADDR_OFFS: u32 = 278528;
 const BYTES_PER_POS: u32 = 32;
-const PULSES_PER_KWS: f64 = 468.9385193;
+const PULSES_PER_KWH: f64 = 468.9385193;
 
 /// Convert log element to memory address
 fn pos2addr(pos: u32) -> u32 {
@@ -17,9 +17,37 @@ fn addr2pos(addr: u32) -> u32 {
     (addr - ADDR_OFFS) / BYTES_PER_POS
 }
 
-/// Convert pulses to kWs
-fn to_kws(pulses: u32) -> f64 {
-    pulses as f64 / PULSES_PER_KWS
+#[derive(Debug, Copy, Clone)]
+pub struct Pulses {
+    pulses: u32,
+    timespan: u32
+}
+
+impl Pulses {
+    pub fn new(pulses: u32, timespan: u32) -> Pulses {
+        Pulses {
+            pulses: pulses,
+            timespan: timespan
+        }
+    }
+
+    /// Convert pulses to kWh
+    pub fn to_kwh(&self, calibration: ResCalibration) -> f64 {
+        let pulses = self.correct(calibration);
+        pulses / PULSES_PER_KWH
+    }
+
+    /// Retrieve corrected number of pulses per second
+    fn correct(&self, calibration: ResCalibration) -> f64 {
+        if self.pulses == 0 {
+            0.0
+        } else {
+            let noise_corrected = (self.pulses as f64 / self.timespan as f64) +
+                calibration.off_noise as f64;
+            (noise_corrected.powi(2) * calibration.gain_b as f64) +
+                (noise_corrected * calibration.gain_a as f64) + calibration.off_total as f64
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -240,13 +268,13 @@ impl ReqPowerBuffer {
 #[derive(Debug, Copy, Clone)]
 pub struct ResPowerBuffer {
     pub datetime1: DateTime,
-    pub pulses1: f64,
+    pub pulses1: Pulses,
     pub datetime2: DateTime,
-    pub pulses2: f64,
+    pub pulses2: Pulses,
     pub datetime3: DateTime,
-    pub pulses3: f64,
+    pub pulses3: Pulses,
     pub datetime4: DateTime,
-    pub pulses4: f64,
+    pub pulses4: Pulses,
     pub logaddr: u32,
 }
 
@@ -265,13 +293,13 @@ impl ResPowerBuffer {
 
         Ok(ResPowerBuffer {
             datetime1: datetime1,
-            pulses1: to_kws(pulses1),
+            pulses1: Pulses::new(pulses1, 3600),
             datetime2: datetime2,
-            pulses2: to_kws(pulses2),
+            pulses2: Pulses::new(pulses2, 3600),
             datetime3: datetime3,
-            pulses3: to_kws(pulses3),
+            pulses3: Pulses::new(pulses3, 3600),
             datetime4: datetime4,
-            pulses4: to_kws(pulses4),
+            pulses4: Pulses::new(pulses4, 3600),
             logaddr: addr2pos(logaddr)
         })
     }
@@ -279,9 +307,9 @@ impl ResPowerBuffer {
 
 #[derive(Debug, Copy, Clone)]
 pub struct ResPowerUse {
-    pub pulse_1s: f64,
-    pub pulse_8s: f64,
-    pub pulse_hour: f64,
+    pub pulse_1s: Pulses,
+    pub pulse_8s: Pulses,
+    pub pulse_hour: Pulses,
     pub unknown1: u16,
     pub unknown2: u16,
     pub unknown3: u16,
@@ -298,9 +326,9 @@ impl ResPowerUse {
         try!(decoder.check_fully_consumed());
 
         Ok(ResPowerUse {
-            pulse_1s: to_kws(pulse_1s as u32),
-            pulse_8s: to_kws(pulse_8s as u32),
-            pulse_hour: to_kws(pulse_hour),
+            pulse_1s: Pulses::new(pulse_1s as u32, 1),
+            pulse_8s: Pulses::new(pulse_1s as u32, 8),
+            pulse_hour: Pulses::new(pulse_hour, 3600),
             unknown1: unknown1,
             unknown2: unknown2,
             unknown3: unknown3,
