@@ -385,6 +385,11 @@ pub struct ReqClockSet {
 impl ReqClockSet {
     pub fn new_from_tm(tm: Tm) -> ReqClockSet {
         let utc = tm.to_utc();
+        let day_of_week = match tm.tm_wday {
+            n @ 1...6 => n as u8,
+            0 => 7 as u8,
+            _ => unreachable!()
+        };
 
         ReqClockSet {
             datetime: DateTime::new(utc),
@@ -392,7 +397,7 @@ impl ReqClockSet {
             hour: utc.tm_hour as u8,
             minute: utc.tm_min as u8,
             second: utc.tm_sec as u8,
-            day_of_week: utc.tm_wday as u8,
+            day_of_week: day_of_week,
         }
     }
 
