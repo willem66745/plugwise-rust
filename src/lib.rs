@@ -148,7 +148,9 @@ impl<'a, I:Read+Write+'a> Circle for CircleInner<'a, I> {
     }
 
 
-    fn get_power_buffer(&self, max_entries: Option<u32>) -> io::Result<BTreeMap<time::Timespec, f64>> {
+    fn get_power_buffer(&self,
+                        max_entries: Option<u32>)
+                        -> io::Result<BTreeMap<time::Timespec, f64>> {
         let mut result = BTreeMap::<time::Timespec, f64>::new();
         let info = try!(self.protocol.borrow_mut().get_info(self.mac));
         let start = match max_entries {
@@ -178,7 +180,7 @@ impl<'a, I:Read+Write+'a> Circle for CircleInner<'a, I> {
 
 impl <'a, I:Read+Write+'a>  CircleInner<'a, I> {
     fn get_power_buffer_helper(&self,
-                               map:&mut BTreeMap<time::Timespec, f64>,
+                               map: &mut BTreeMap<time::Timespec, f64>,
                                datetime: &protocol::DateTime,
                                pulses: &protocol::Pulses) {
         if let Some(tm) = datetime.to_tm() {
