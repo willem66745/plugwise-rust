@@ -52,6 +52,7 @@ pub trait Circle {
     fn is_switched_on(&self) -> io::Result<bool>;
     fn get_actual_watt_usage(&self) -> io::Result<f64>;
     fn get_clock(&self) -> io::Result<time::Tm>;
+    fn set_clock(&self, tm: time::Tm) -> io::Result<()>;
 }
 
 impl<'a, I:Read+Write+'a> Plugwise<'a> for PlugwiseInner<'a, I> {
@@ -103,6 +104,12 @@ impl<'a, I:Read+Write+'a> Circle for CircleInner<'a, I> {
         tm.tm_hour = clock.hour as i32;
         tm.tm_wday = (clock.day_of_week % 7) as i32;
         Ok(tm)
+    }
+
+    fn set_clock(&self, tm: time::Tm) -> io::Result<()> {
+        let clock_set = protocol::ReqClockSet::new_from_tm(tm);
+        try!(self.protocol.borrow_mut().set_clock(self.mac, clock_set));
+        Ok(())
     }
 }
 
