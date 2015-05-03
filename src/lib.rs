@@ -51,6 +51,7 @@ pub trait Circle {
     fn switch_off(&self) -> io::Result<()>;
     fn is_switched_on(&self) -> io::Result<bool>;
     fn get_actual_watt_usage(&self) -> io::Result<f64>;
+    fn get_clock(&self) -> io::Result<time::Tm>;
 }
 
 impl<'a, I:Read+Write+'a> Plugwise<'a> for PlugwiseInner<'a, I> {
@@ -87,6 +88,21 @@ impl<'a, I:Read+Write+'a> Circle for CircleInner<'a, I> {
     fn get_actual_watt_usage(&self) -> io::Result<f64> {
         let power_usage = try!(self.protocol.borrow_mut().get_power_usage(self.mac));
         Ok(power_usage.pulse_8s.to_watts(self.calibration_data))
+    }
+
+    fn get_clock(&self) -> io::Result<time::Tm> {
+        let info = try!(self.protocol.borrow_mut().get_info(self.mac));
+        let clock = try!(self.protocol.borrow_mut().get_clock_info(self.mac));
+
+        let mut tm = match info.datetime.to_tm() {
+            Some(tm) => tm,
+            None => return Err(io::Error::new(io::ErrorKind::Other, "circle returns an invalid timestamp"))
+        };
+        tm.tm_sec = clock.second as i32;
+        tm.tm_min = clock.minute as i32;
+        tm.tm_hour = clock.hour as i32;
+        tm.tm_wday = (clock.day_of_week % 7) as i32;
+        Ok(tm)
     }
 }
 
