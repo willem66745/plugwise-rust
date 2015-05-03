@@ -188,5 +188,5 @@ fn smoke_external_stub() {
     circle.get_actual_watt_usage().unwrap();
     let tm = circle.get_clock().unwrap();
     circle.set_clock(tm).unwrap();
-    circle.get_power_buffer(None);
+    circle.get_power_buffer(None).unwrap();
 }
