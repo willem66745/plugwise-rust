@@ -135,3 +135,16 @@ pub fn plugwise_simulator<'a>() -> io::Result<Box<Plugwise<'a>+ 'a>> {
 
     Ok(Box::new(plugwise))
 }
+
+#[test]
+fn smoke_external_stub() {
+    let stub = plugwise_simulator().unwrap();
+    let circle = stub.create_circle(0x01234567890ABCDEF).unwrap();
+    circle.switch_on().unwrap();
+    assert_eq!(circle.is_switched_on().unwrap(), true);
+    circle.switch_off().unwrap();
+    assert_eq!(circle.is_switched_on().unwrap(), false);
+    circle.get_actual_watt_usage().unwrap();
+    let tm = circle.get_clock().unwrap();
+    circle.set_clock(tm).unwrap();
+}
