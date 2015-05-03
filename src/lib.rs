@@ -46,16 +46,11 @@ pub trait Plugwise<'a> {
     fn set_snoop(&self, snoop: ProtocolSnoop<'a>);
 }
 
-pub struct ActualPowerUsage {
-    pub now: f64, // kWh
-    pub last_hour: f64 // kWh
-}
-
 pub trait Circle {
     fn switch_on(&self) -> io::Result<()>;
     fn switch_off(&self) -> io::Result<()>;
     fn is_switched_on(&self) -> io::Result<bool>;
-    fn get_actual_power_usage(&self) -> io::Result<ActualPowerUsage>;
+    fn get_actual_watt_usage(&self) -> io::Result<f64>;
 }
 
 impl<'a, I:Read+Write+'a> Plugwise<'a> for PlugwiseInner<'a, I> {
@@ -89,12 +84,9 @@ impl<'a, I:Read+Write+'a> Circle for CircleInner<'a, I> {
         Ok(info.relay_state)
     }
 
-    fn get_actual_power_usage(&self) -> io::Result<ActualPowerUsage> {
+    fn get_actual_watt_usage(&self) -> io::Result<f64> {
         let power_usage = try!(self.protocol.borrow_mut().get_power_usage(self.mac));
-        Ok(ActualPowerUsage {
-            now: power_usage.pulse_8s.to_kwh(self.calibration_data),
-            last_hour: power_usage.pulse_hour.to_kwh(self.calibration_data)
-        })
+        Ok(power_usage.pulse_8s.to_watts(self.calibration_data))
     }
 }
 
