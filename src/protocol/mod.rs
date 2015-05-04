@@ -12,6 +12,7 @@ const HEADER: [u8; 4] = [5, 5, 3, 3];
 const FOOTER: [u8; 2] = [13, 10];
 const EOM: u8 = 10;
 const CRC_SIZE: usize = 4;
+const DEFAULT_RETRIES: u8 = 3;
 
 /// Plugwise communication snooper setting.
 pub enum ProtocolSnoop<'a> {
@@ -28,7 +29,8 @@ pub enum ProtocolSnoop<'a> {
 
 pub struct Protocol<'a, R> {
     reader: io::BufReader<R>,
-    snoop: ProtocolSnoop<'a>
+    snoop: ProtocolSnoop<'a>,
+    retries: u8,
 }
 
 impl<'a, R: Read + Write> Protocol<'a, R> {
@@ -36,8 +38,13 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
     pub fn new(port: R) -> Protocol<'a, R> {
         Protocol {
             reader: io::BufReader::with_capacity(1000, port),
-            snoop: ProtocolSnoop::Nothing
+            snoop: ProtocolSnoop::Nothing,
+            retries: DEFAULT_RETRIES,
         }
+    }
+
+    pub fn set_retries(&mut self, retries: u8) {
+        self.retries = retries;
     }
 
     pub fn set_snoop(&mut self, snoop: ProtocolSnoop<'a>) {
@@ -183,7 +190,7 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
     }
 
     /// Send message
-    fn send_message(&mut self, message: Message) -> io::Result<()> {
+    fn send_message(&mut self, message: &Message) -> io::Result<()> {
         match self.snoop {
             ProtocolSnoop::Debug(ref mut writer) => {
                 try!(writer.write_fmt(format_args!("> {:?}\n", message)));
@@ -197,17 +204,49 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
 
     /// Send a message and wait for response
     fn send_and_expect(&mut self, message: Message, expected: MessageId) -> io::Result<Message> {
-        try!(self.send_message(message));
-        Ok(try!(self.expect_message(expected)))
+        let mut retries = self.retries;
+
+        loop {
+            try!(self.send_message(&message));
+            match self.expect_message(expected) {
+                Ok(n) => return Ok(n),
+                Err(e) => {
+                    if retries == 0 {
+                        return Err(e);
+                    } else {
+                        if e.kind() != io::ErrorKind::TimedOut {
+                            return Err(e);
+                        } else {
+                            retries = retries - 1;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Send a message and wait for acknowledge with a mac
     fn send_and_expect_ack(&mut self, message: Message, mac: u64) -> io::Result<()> {
-        try!(self.send_message(message));
-        try!(self.wait_for_mac_ack(mac));
-        Ok(())
-    }
+        let mut retries = self.retries;
 
+        loop {
+            try!(self.send_message(&message));
+            match self.wait_for_mac_ack(mac) {
+                Ok(n) => return Ok(n),
+                Err(e) => {
+                    if retries == 0 {
+                        return Err(e);
+                    } else {
+                        if e.kind() != io::ErrorKind::TimedOut {
+                            return Err(e);
+                        } else {
+                            retries = retries - 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     /// Initialize the Plugwise USB stick
     pub fn initialize(&mut self) -> io::Result<ResInitialize> {

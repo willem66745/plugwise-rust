@@ -68,6 +68,8 @@ pub trait Plugwise<'a> {
     fn create_circle(&self, mac: u64) -> io::Result<Box<Circle + 'a>>;
     /// Add a `io::Write` instance to log the communication.
     fn set_snoop(&self, snoop: ProtocolSnoop<'a>);
+    /// Set the number of retries of a request to a Circle
+    fn set_retries(&self, retries: u8);
 }
 
 /// A abstract representation of the Plugwise Circle/Circle+.
@@ -102,6 +104,10 @@ impl<'a, I:Read+Write+'a> Plugwise<'a> for PlugwiseInner<'a, I> {
 
     fn set_snoop(&self, snoop: ProtocolSnoop<'a>) {
         self.protocol.borrow_mut().set_snoop(snoop);
+    }
+
+    fn set_retries(&self, retries: u8) {
+        self.protocol.borrow_mut().set_retries(retries);
     }
 }
 
