@@ -195,11 +195,24 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
         Ok(())
     }
 
+    /// Send a message and wait for response
+    fn send_and_expect(&mut self, message: Message, expected: MessageId) -> io::Result<Message> {
+        try!(self.send_message(message));
+        Ok(try!(self.expect_message(expected)))
+    }
+
+    /// Send a message and wait for acknowledge with a mac
+    fn send_and_expect_ack(&mut self, message: Message, mac: u64) -> io::Result<()> {
+        try!(self.send_message(message));
+        try!(self.wait_for_mac_ack(mac));
+        Ok(())
+    }
+
+
     /// Initialize the Plugwise USB stick
     pub fn initialize(&mut self) -> io::Result<ResInitialize> {
-        try!(self.send_message(Message::ReqInitialize));
-
-        let msg = try!(self.expect_message(MessageId::ResInitialize));
+        let msg = try!(self.send_and_expect(Message::ReqInitialize,
+                                            MessageId::ResInitialize));
 
         match msg {
             Message::ResInitialize(_, res) => Ok(res),
@@ -209,9 +222,8 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
 
     /// Get info from a circle
     pub fn get_info(&mut self, mac: u64) -> io::Result<ResInfo> {
-        try!(self.send_message(Message::ReqInfo(ReqHeader{mac: mac})));
-
-        let msg = try!(self.expect_message(MessageId::ResInfo));
+        let msg = try!(self.send_and_expect(Message::ReqInfo(ReqHeader{mac: mac}),
+                                            MessageId::ResInfo));
 
         match msg {
             Message::ResInfo(_, res) => Ok(res),
@@ -221,18 +233,16 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
 
     /// Switch a circle
     pub fn switch(&mut self, mac: u64, on: bool) -> io::Result<()> {
-        try!(self.send_message(Message::ReqSwitch(ReqHeader{mac: mac}, ReqSwitch{on: on})));
-
-        try!(self.wait_for_mac_ack(mac));
-
+        try!(self.send_and_expect_ack(Message::ReqSwitch(ReqHeader{mac: mac},
+                                                         ReqSwitch{on: on}),
+                                      mac));
         Ok(())
     }
 
     /// Calibrate a circle
     pub fn calibrate(&mut self, mac: u64) -> io::Result<ResCalibration> {
-        try!(self.send_message(Message::ReqCalibration(ReqHeader{mac: mac})));
-
-        let msg = try!(self.expect_message(MessageId::ResCalibration));
+        let msg = try!(self.send_and_expect(Message::ReqCalibration(ReqHeader{mac: mac}),
+                                            MessageId::ResCalibration));
 
         match msg {
             Message::ResCalibration(_, res) => Ok(res),
@@ -242,10 +252,9 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
 
     /// Retrieve power buffer
     pub fn get_power_buffer(&mut self, mac: u64, addr: u32) -> io::Result<ResPowerBuffer> {
-        try!(self.send_message( Message::ReqPowerBuffer(ReqHeader{mac: mac},
-                                                        ReqPowerBuffer{logaddr: addr})));
-
-        let msg = try!(self.expect_message(MessageId::ResPowerBuffer));
+        let msg = try!(self.send_and_expect(Message::ReqPowerBuffer(ReqHeader{mac: mac},
+                                                                    ReqPowerBuffer{logaddr: addr}),
+                                            MessageId::ResPowerBuffer));
 
         match msg {
             Message::ResPowerBuffer(_, res) => Ok(res),
@@ -255,9 +264,8 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
 
     /// Retrieve actual power usage
     pub fn get_power_usage(&mut self, mac: u64) -> io::Result<ResPowerUse> {
-        try!(self.send_message(Message::ReqPowerUse(ReqHeader{mac: mac})));
-
-        let msg = try!(self.expect_message(MessageId::ResPowerUse));
+        let msg = try!(self.send_and_expect(Message::ReqPowerUse(ReqHeader{mac: mac}),
+                                            MessageId::ResPowerUse));
 
         match msg {
             Message::ResPowerUse(_, res) => Ok(res),
@@ -267,9 +275,8 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
 
     /// Retrieve actual power usage
     pub fn get_clock_info(&mut self, mac: u64) -> io::Result<ResClockInfo> {
-        try!(self.send_message(Message::ReqClockInfo(ReqHeader{mac: mac})));
-
-        let msg = try!(self.expect_message(MessageId::ResClockInfo));
+        let msg = try!(self.send_and_expect(Message::ReqClockInfo(ReqHeader{mac: mac}),
+                                            MessageId::ResClockInfo));
 
         match msg {
             Message::ResClockInfo(_, res) => Ok(res),
@@ -279,10 +286,9 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
 
     /// Set clock
     pub fn set_clock(&mut self, mac: u64, clock_set: ReqClockSet) -> io::Result<()> {
-        try!(self.send_message(Message::ReqClockSet(ReqHeader{mac: mac}, clock_set)));
-
-        try!(self.wait_for_mac_ack(mac));
-
+        try!(self.send_and_expect_ack(Message::ReqClockSet(ReqHeader{mac: mac},
+                                                           clock_set),
+                                      mac));
         Ok(())
     }
 }
