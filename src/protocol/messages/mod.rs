@@ -33,7 +33,7 @@ impl Pulses {
 
     /// Retrieve corrected number of pulses per second
     fn to_pulses_per_second(&self, calibration: ResCalibration) -> f64 {
-        if self.pulses == 0 {
+        if self.pulses == 0 || self.pulses == 0xffff {
             0.0
         } else {
             let noise_corrected = (self.pulses as f64 / self.timespan as f64) +
