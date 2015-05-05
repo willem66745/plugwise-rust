@@ -23,9 +23,9 @@
 //! ```ignore
 //! extern crate plugwise;
 //!
-//! // instantiate a simulation version of Plugwise
+//! // Connect to a plugwise device
 //! let serial = plugwise::plugwise(plugwise::Device::Serial("/dev/ttyUSB0")).unwrap();
-//! // create a Circle (simulation allows any MAC to be used)
+//! // create a Circle (replace MAC address)
 //! let circle = serial.create_circle(0x01234567890ABCDEF).unwrap();
 //! // switch the Circle on
 //! circle.switch_on().unwrap();
@@ -259,9 +259,9 @@ pub enum Device<'a> {
 /// ```ignore
 /// extern crate plugwise;
 ///
-/// // instantiate a simulation version of Plugwise
+/// // Connect to a plugwise device
 /// let serial = plugwise::plugwise(plugwise::Device::Serial("/dev/ttyUSB0")).unwrap();
-/// // create a Circle (simulation allows any MAC to be used)
+/// // create a Circle (replace MAC address)
 /// let circle = serial.create_circle(0x01234567890ABCDEF).unwrap();
 /// // switch the Circle on
 /// circle.switch_on().unwrap();
