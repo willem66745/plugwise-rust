@@ -24,10 +24,10 @@ fn main() {
 
     let mut debug = io::stdout();
     //let plugwise = plugwise(Device::Simulator).unwrap();
-    let plugwise = plugwise(Device::SerialExt("/dev/ttyUSB0",
-                                              Duration::milliseconds(1000),
-                                              3,
-                                              ProtocolSnoop::Debug(&mut debug))).unwrap();
+    let plugwise = plugwise(Device::SerialExt{port: "/dev/ttyUSB0",
+                                              timeout: Duration::milliseconds(1000),
+                                              retries: 3,
+                                              snoop: ProtocolSnoop::Debug(&mut debug)}).unwrap();
 
     let week = time::Duration::weeks(1);
 

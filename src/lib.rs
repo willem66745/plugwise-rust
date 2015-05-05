@@ -247,7 +247,11 @@ pub enum Device<'a> {
     /// - Number of attempts to retry communication;
     /// - Tracing settings (including a reference to a `io::Write` instance to log the
     ///   communication)
-    SerialExt(&'a str, time::Duration, u8, ProtocolSnoop<'a>),
+    SerialExt {
+        port: &'a str,
+        timeout: time::Duration,
+        retries: u8,
+        snoop: ProtocolSnoop<'a> },
     /// Create a simulation instance for development, testing and integration purposes
     Simulator,
 }
@@ -288,7 +292,7 @@ pub fn plugwise<'a>(device: Device<'a>) -> io::Result<Box<Plugwise<'a>+ 'a>> {
         Device::Serial(port) => {
             plugwise_device(port, Duration::milliseconds(1000), 3, ProtocolSnoop::Nothing)
         },
-        Device::SerialExt(port, timeout, retries, snoop) => {
+        Device::SerialExt{port, timeout, retries, snoop} => {
             let device = try!(plugwise_device(port, timeout, retries, snoop));
 
             Ok(device)
