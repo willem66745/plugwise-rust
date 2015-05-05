@@ -243,15 +243,17 @@ pub enum Device<'a> {
     Serial(&'a str),
     /// Simular to `Serial` but with extra settings:
     ///
-    /// - Timeout in milliseconds;
-    /// - Number of attempts to retry communication;
-    /// - Tracing settings (including a reference to a `io::Write` instance to log the
-    ///   communication)
     SerialExt {
+        /// USB serial device name
         port: &'a str,
+        /// Timeout in milliseconds;
         timeout: time::Duration,
+        /// Number of attempts to retry communication;
         retries: u8,
-        snoop: ProtocolSnoop<'a> },
+        /// Tracing settings (including a reference to a `io::Write` instance to log the
+        /// communication)
+        snoop: ProtocolSnoop<'a>
+    },
     /// Create a simulation instance for development, testing and integration purposes
     Simulator,
 }
