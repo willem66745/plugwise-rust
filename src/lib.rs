@@ -17,6 +17,19 @@
 //! This crate is tested against Linux, but since this crate is based on
 //! [serial-rs](../serial/index.html) crate, it is expected this crate also works on Windows and
 //! Mac OS X.
+//!
+//! Enable the relay of a Circle:
+//!
+//! ```ignore
+//! extern crate plugwise;
+//!
+//! // instantiate a simulation version of Plugwise
+//! let stub = plugwise::plugwise(plugwise::Device::Serial("/dev/ttyUSB0")).unwrap();
+//! // create a Circle (simulation allows any MAC to be used)
+//! let circle = stub.create_circle(0x01234567890ABCDEF).unwrap();
+//! // switch the Circle on
+//! circle.switch_on().unwrap();
+//! ```
 
 extern crate crc16;
 extern crate time;
@@ -59,6 +72,14 @@ impl<'a, I: Read+Write+'a> PlugwiseInner<'a, I> {
 
         Ok(plugwise)
     }
+
+    fn set_snoop(&self, snoop: ProtocolSnoop<'a>) {
+        self.protocol.borrow_mut().set_snoop(snoop);
+    }
+
+    fn set_retries(&self, retries: u8) {
+        self.protocol.borrow_mut().set_retries(retries);
+    }
 }
 
 /// A abstract representation of the Plugwise USB stick.
@@ -66,10 +87,6 @@ pub trait Plugwise<'a> {
     /// Register a Circle (a wall outlet switch) and returns a abstract representation of the
     /// Circle.
     fn create_circle(&self, mac: u64) -> io::Result<Box<Circle + 'a>>;
-    /// Add a `io::Write` instance to log the communication.
-    fn set_snoop(&self, snoop: ProtocolSnoop<'a>);
-    /// Set the number of retries of a request to a Circle
-    fn set_retries(&self, retries: u8);
 }
 
 /// A abstract representation of the Plugwise Circle/Circle+.
@@ -100,14 +117,6 @@ impl<'a, I:Read+Write+'a> Plugwise<'a> for PlugwiseInner<'a, I> {
             mac: mac,
             calibration_data: calibration_data
         }))
-    }
-
-    fn set_snoop(&self, snoop: ProtocolSnoop<'a>) {
-        self.protocol.borrow_mut().set_snoop(snoop);
-    }
-
-    fn set_retries(&self, retries: u8) {
-        self.protocol.borrow_mut().set_retries(retries);
     }
 }
 
@@ -196,19 +205,11 @@ impl <'a, I:Read+Write+'a>  CircleInner<'a, I> {
 }
 
 /// Create a instance to communicate with the Plugwise USB stick and Circle/Circle+ devices.
-///
-/// ```ignore
-/// extern crate plugwise;
-///
-/// // instantiate and initiate communication with a Plugwise USB stick
-/// let plugwise = plugwise::plugwise_device("/dev/ttyUSB0").unwrap();
-/// // create a Circle (a real MAC must be used, or a Timeout would occur)
-/// let circle = plugwise.create_circle(0x01234567890ABCDEF).unwrap();
-/// // switch the Circle on
-/// circle.switch_on().unwrap();
-/// ```
-pub fn plugwise_device<'a>(device: &str) -> io::Result<Box<Plugwise<'a>+ 'a>> {
-    let mut port = try!(serial::open(device));
+fn plugwise_device<'a>(port: &str,
+                       timeout: Duration,
+                       retries: u8,
+                       snoop: ProtocolSnoop<'a>) -> io::Result<Box<Plugwise<'a>+ 'a>> {
+    let mut port = try!(serial::open(port));
     try!(port.configure(|settings| {
         settings.set_baud_rate(serial::Baud115200);
         settings.set_char_size(serial::Bits8);
@@ -216,26 +217,17 @@ pub fn plugwise_device<'a>(device: &str) -> io::Result<Box<Plugwise<'a>+ 'a>> {
         settings.set_stop_bits(serial::Stop1);
     }));
 
-    port.set_timeout(Duration::milliseconds(1000));
+    port.set_timeout(timeout);
     let plugwise = try!(PlugwiseInner::initialize(port));
+    plugwise.set_snoop(snoop);
+    plugwise.set_retries(retries);
 
     Ok(Box::new(plugwise))
 }
 
 /// Create a simulation instance for integration or test purposes to use this library without the
 /// need of the real hardware.
-///
-/// ```
-/// extern crate plugwise;
-///
-/// // instantiate a simulation version of Plugwise
-/// let stub = plugwise::plugwise_simulator().unwrap();
-/// // create a Circle (simulation allows any MAC to be used)
-/// let circle = stub.create_circle(0x01234567890ABCDEF).unwrap();
-/// // switch the Circle on
-/// circle.switch_on().unwrap();
-/// ```
-pub fn plugwise_simulator<'a>() -> io::Result<Box<Plugwise<'a>+ 'a>> {
+fn plugwise_simulator<'a>() -> io::Result<Box<Plugwise<'a>+ 'a>> {
     let port = stub::Stub::new();
 
     let plugwise = try!(PlugwiseInner::initialize(port));
@@ -243,9 +235,68 @@ pub fn plugwise_simulator<'a>() -> io::Result<Box<Plugwise<'a>+ 'a>> {
     Ok(Box::new(plugwise))
 }
 
+/// Specify which kind of Plugwise device to use
+pub enum Device<'a> {
+    /// Create a link to the Plugwise USB stick to communicate with the Circle/Circle+ wall
+    /// outlets. The reference to the hardware device (i.e. `/dev/ttyUSB0`) must be provided.
+    Serial(&'a str),
+    /// Simular to `serial` but with extra settings:
+    /// Timeout in milliseconds;
+    /// Number of attempts to retry communication;
+    /// Tracing settings (including a reference to a `io::Write` instance to log the
+    /// communication)
+    SerialExt(&'a str, time::Duration, u8, ProtocolSnoop<'a>),
+    /// Create a simulation instance for development, testing and integration purposes
+    Simulator,
+}
+
+/// Create instance to communicate against a (simulator) Plugwise USB stick and the associated
+/// Circle/Circle+ devices.
+///
+/// Instantiate a link to a Plugwise device:
+///
+/// ```ignore
+/// extern crate plugwise;
+///
+/// // instantiate a simulation version of Plugwise
+/// let stub = plugwise::plugwise(plugwise::Device::Serial("/dev/ttyUSB0")).unwrap();
+/// // create a Circle (simulation allows any MAC to be used)
+/// let circle = stub.create_circle(0x01234567890ABCDEF).unwrap();
+/// // switch the Circle on
+/// circle.switch_on().unwrap();
+/// ```
+///
+/// Instantiate a simulation version:
+///
+/// ```
+/// extern crate plugwise;
+///
+/// // instantiate a simulation version of Plugwise
+/// let stub = plugwise::plugwise(plugwise::Device::Simulator).unwrap();
+/// // create a Circle (simulation allows any MAC to be used)
+/// let circle = stub.create_circle(0x01234567890ABCDEF).unwrap();
+/// // switch the Circle on
+/// circle.switch_on().unwrap();
+/// ```
+pub fn plugwise<'a>(device: Device<'a>) -> io::Result<Box<Plugwise<'a>+ 'a>> {
+    match device {
+        Device::Simulator => {
+            plugwise_simulator()
+        },
+        Device::Serial(port) => {
+            plugwise_device(port, Duration::milliseconds(1000), 3, ProtocolSnoop::Nothing)
+        },
+        Device::SerialExt(port, timeout, retries, snoop) => {
+            let device = try!(plugwise_device(port, timeout, retries, snoop));
+
+            Ok(device)
+        },
+    }
+}
+
 #[test]
 fn smoke_external_stub() {
-    let stub = plugwise_simulator().unwrap();
+    let stub = plugwise(Device::Simulator).unwrap();
     let circle = stub.create_circle(0x01234567890ABCDEF).unwrap();
     circle.switch_on().unwrap();
     assert_eq!(circle.is_switched_on().unwrap(), true);

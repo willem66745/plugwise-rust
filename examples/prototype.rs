@@ -3,12 +3,16 @@ extern crate plugwise;
 extern crate toml;
 extern crate time;
 
-//use std::io;
+use std::io;
 use std::io::prelude::*;
 use std::env::home_dir;
 use std::fs::File;
 
-//use plugwise::ProtocolSnoop;
+use time::Duration;
+
+use plugwise::ProtocolSnoop;
+use plugwise::Device;
+use plugwise::plugwise;
 
 fn main() {
     let mut path = home_dir().unwrap(); // XXX
@@ -18,10 +22,12 @@ fn main() {
     file.read_to_string(&mut config).unwrap();
     let config = toml::Parser::new(&config).parse().unwrap(); // XXX
 
-    //let mut debug = io::stdout();
-    let plugwise = plugwise::plugwise_device("/dev/ttyUSB0").unwrap();
-    //let plugwise = plugwise::plugwise_simulator().unwrap();
-    //plugwise.set_snoop(ProtocolSnoop::Debug(&mut debug));
+    let mut debug = io::stdout();
+    //let plugwise = plugwise(Device::Simulator).unwrap();
+    let plugwise = plugwise(Device::SerialExt("/dev/ttyUSB0",
+                                              Duration::milliseconds(1000),
+                                              3,
+                                              ProtocolSnoop::Debug(&mut debug))).unwrap();
 
     let week = time::Duration::weeks(1);
 

@@ -1,7 +1,5 @@
 # plugwise-rust
 
-**(Still) Work in progress**
-
 This crate implements a part of the Plugwise Circle and Plugwise Circle+ protocol (tested against
 2010 firmware). It still requires the official tooling to configure and to link the plugs. This
 library supports the following operations:
