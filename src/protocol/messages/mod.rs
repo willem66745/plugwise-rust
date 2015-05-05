@@ -87,9 +87,9 @@ pub struct Ack {
 impl Ack {
     /// Decode info response
     fn new(decoder: raw::RawDataConsumer) -> io::Result<Ack> {
-        let (decoder, status) = try!(decoder.decode_u16());
+        let (decoder, status) = try!(decoder.decode::<u16>());
         let (decoder, mac) = if decoder.get_remaining() > 0 {
-            let (decoder, mac) = try!(decoder.decode_u64());
+            let (decoder, mac) = try!(decoder.decode::<u64>());
             (decoder, Some(mac))
         } else {
             (decoder, None)
@@ -115,11 +115,11 @@ pub struct ResInitialize {
 impl ResInitialize {
     /// Decode initialization response
     fn new(decoder: raw::RawDataConsumer) -> io::Result<ResInitialize> {
-        let (decoder, unknown1) = try!(decoder.decode_u8());
-        let (decoder, is_online) = try!(decoder.decode_u8());
-        let (decoder, network_id) = try!(decoder.decode_u64());
-        let (decoder, short_id) = try!(decoder.decode_u16());
-        let (decoder, unknown2) = try!(decoder.decode_u8());
+        let (decoder, unknown1) = try!(decoder.decode::<u8>());
+        let (decoder, is_online) = try!(decoder.decode::<u8>());
+        let (decoder, network_id) = try!(decoder.decode::<u64>());
+        let (decoder, short_id) = try!(decoder.decode::<u16>());
+        let (decoder, unknown2) = try!(decoder.decode::<u8>());
         try!(decoder.check_fully_consumed());
 
         Ok(ResInitialize {
@@ -200,12 +200,12 @@ impl ResInfo {
     /// Decode info response
     fn new(decoder: raw::RawDataConsumer) -> io::Result<ResInfo> {
         let (decoder, datetime) = try!(decoder.decode_datetime());
-        let (decoder, last_logaddr) = try!(decoder.decode_u32());
-        let (decoder, relay_state) = try!(decoder.decode_u8());
-        let (decoder, hz) = try!(decoder.decode_u8());
+        let (decoder, last_logaddr) = try!(decoder.decode::<u32>());
+        let (decoder, relay_state) = try!(decoder.decode::<u8>());
+        let (decoder, hz) = try!(decoder.decode::<u8>());
         let (decoder, hw_ver) = try!(decoder.decode_string(12));
-        let (decoder, fw_ver) = try!(decoder.decode_u32());
-        let (decoder, unknown) = try!(decoder.decode_u8());
+        let (decoder, fw_ver) = try!(decoder.decode::<u32>());
+        let (decoder, unknown) = try!(decoder.decode::<u8>());
         try!(decoder.check_fully_consumed());
 
         Ok(ResInfo {
@@ -291,14 +291,14 @@ pub struct ResPowerBuffer {
 impl ResPowerBuffer {
     fn new(decoder: raw::RawDataConsumer) -> io::Result<ResPowerBuffer> {
         let (decoder, datetime1) = try!(decoder.decode_datetime());
-        let (decoder, pulses1) = try!(decoder.decode_u32());
+        let (decoder, pulses1) = try!(decoder.decode::<u32>());
         let (decoder, datetime2) = try!(decoder.decode_datetime());
-        let (decoder, pulses2) = try!(decoder.decode_u32());
+        let (decoder, pulses2) = try!(decoder.decode::<u32>());
         let (decoder, datetime3) = try!(decoder.decode_datetime());
-        let (decoder, pulses3) = try!(decoder.decode_u32());
+        let (decoder, pulses3) = try!(decoder.decode::<u32>());
         let (decoder, datetime4) = try!(decoder.decode_datetime());
-        let (decoder, pulses4) = try!(decoder.decode_u32());
-        let (decoder, logaddr) = try!(decoder.decode_u32());
+        let (decoder, pulses4) = try!(decoder.decode::<u32>());
+        let (decoder, logaddr) = try!(decoder.decode::<u32>());
         try!(decoder.check_fully_consumed());
 
         Ok(ResPowerBuffer {
@@ -327,12 +327,12 @@ pub struct ResPowerUse {
 
 impl ResPowerUse {
     fn new(decoder: raw::RawDataConsumer) -> io::Result<ResPowerUse> {
-        let (decoder, pulse_1s) = try!(decoder.decode_u16());
-        let (decoder, pulse_8s) = try!(decoder.decode_u16());
-        let (decoder, pulse_hour) = try!(decoder.decode_u32());
-        let (decoder, unknown1) = try!(decoder.decode_u16());
-        let (decoder, unknown2) = try!(decoder.decode_u16());
-        let (decoder, unknown3) = try!(decoder.decode_u16());
+        let (decoder, pulse_1s) = try!(decoder.decode::<u16>());
+        let (decoder, pulse_8s) = try!(decoder.decode::<u16>());
+        let (decoder, pulse_hour) = try!(decoder.decode::<u32>());
+        let (decoder, unknown1) = try!(decoder.decode::<u16>());
+        let (decoder, unknown2) = try!(decoder.decode::<u16>());
+        let (decoder, unknown3) = try!(decoder.decode::<u16>());
         try!(decoder.check_fully_consumed());
 
         Ok(ResPowerUse {
@@ -358,12 +358,12 @@ pub struct ResClockInfo {
 
 impl ResClockInfo {
     fn new(decoder: raw::RawDataConsumer) -> io::Result<ResClockInfo> {
-        let (decoder, hour) = try!(decoder.decode_u8());
-        let (decoder, minute) = try!(decoder.decode_u8());
-        let (decoder, second) = try!(decoder.decode_u8());
-        let (decoder, day_of_week) = try!(decoder.decode_u8());
-        let (decoder, unknown1) = try!(decoder.decode_u8());
-        let (decoder, unknown2) = try!(decoder.decode_u16());
+        let (decoder, hour) = try!(decoder.decode::<u8>());
+        let (decoder, minute) = try!(decoder.decode::<u8>());
+        let (decoder, second) = try!(decoder.decode::<u8>());
+        let (decoder, day_of_week) = try!(decoder.decode::<u8>());
+        let (decoder, unknown1) = try!(decoder.decode::<u8>());
+        let (decoder, unknown2) = try!(decoder.decode::<u16>());
         try!(decoder.check_fully_consumed());
 
         Ok(ResClockInfo {
@@ -545,12 +545,12 @@ impl Message {
     pub fn from_payload(payload: &[u8]) -> io::Result<Message> {
         let decoder = raw::RawDataConsumer::new(payload);
 
-        let (decoder, msg_id) = try!(decoder.decode_u16());
-        let (decoder, counter) = try!(decoder.decode_u16());
+        let (decoder, msg_id) = try!(decoder.decode::<u16>());
+        let (decoder, counter) = try!(decoder.decode::<u16>());
         let msg_id = MessageId::new(msg_id);
 
         let (decoder, mac) = if msg_id != MessageId::Ack {
-            try!(decoder.decode_u64())
+            try!(decoder.decode::<u64>())
         } else {
             (decoder, 0)
         };

@@ -34,6 +34,7 @@
 extern crate crc16;
 extern crate time;
 extern crate serial;
+extern crate num;
 
 mod stub;
 mod protocol;
