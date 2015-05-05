@@ -133,11 +133,7 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
         let payload = buf.iter().take(footer_pos - CRC_SIZE).skip(header_pos + HEADER.len());
         let crc = buf.iter().skip(footer_pos - CRC_SIZE).take(CRC_SIZE);
         let crc = crc.take(4).fold(0, |acc, &item| {
-            acc << 4 | match item {
-                b'0' => 0, b'1' => 1, b'2' => 2,  b'3' => 3,  b'4' => 4,  b'5' => 5,  b'6' => 6,  b'7' => 7,
-                b'8' => 8, b'9' => 9, b'A' => 10, b'B' => 11, b'C' => 12, b'D' => 13, b'E' => 14, b'F' => 15,
-                _ => 0
-            }
+            acc << 4 | (item as char).to_digit(16).unwrap_or_default() as u16
         });
 
         // CRC check
