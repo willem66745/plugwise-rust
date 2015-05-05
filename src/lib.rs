@@ -24,9 +24,9 @@
 //! extern crate plugwise;
 //!
 //! // instantiate a simulation version of Plugwise
-//! let stub = plugwise::plugwise(plugwise::Device::Serial("/dev/ttyUSB0")).unwrap();
+//! let serial = plugwise::plugwise(plugwise::Device::Serial("/dev/ttyUSB0")).unwrap();
 //! // create a Circle (simulation allows any MAC to be used)
-//! let circle = stub.create_circle(0x01234567890ABCDEF).unwrap();
+//! let circle = serial.create_circle(0x01234567890ABCDEF).unwrap();
 //! // switch the Circle on
 //! circle.switch_on().unwrap();
 //! ```
@@ -240,11 +240,12 @@ pub enum Device<'a> {
     /// Create a link to the Plugwise USB stick to communicate with the Circle/Circle+ wall
     /// outlets. The reference to the hardware device (i.e. `/dev/ttyUSB0`) must be provided.
     Serial(&'a str),
-    /// Simular to `serial` but with extra settings:
-    /// Timeout in milliseconds;
-    /// Number of attempts to retry communication;
-    /// Tracing settings (including a reference to a `io::Write` instance to log the
-    /// communication)
+    /// Simular to `Serial` but with extra settings:
+    ///
+    /// - Timeout in milliseconds;
+    /// - Number of attempts to retry communication;
+    /// - Tracing settings (including a reference to a `io::Write` instance to log the
+    ///   communication)
     SerialExt(&'a str, time::Duration, u8, ProtocolSnoop<'a>),
     /// Create a simulation instance for development, testing and integration purposes
     Simulator,
@@ -259,9 +260,9 @@ pub enum Device<'a> {
 /// extern crate plugwise;
 ///
 /// // instantiate a simulation version of Plugwise
-/// let stub = plugwise::plugwise(plugwise::Device::Serial("/dev/ttyUSB0")).unwrap();
+/// let serial = plugwise::plugwise(plugwise::Device::Serial("/dev/ttyUSB0")).unwrap();
 /// // create a Circle (simulation allows any MAC to be used)
-/// let circle = stub.create_circle(0x01234567890ABCDEF).unwrap();
+/// let circle = serial.create_circle(0x01234567890ABCDEF).unwrap();
 /// // switch the Circle on
 /// circle.switch_on().unwrap();
 /// ```

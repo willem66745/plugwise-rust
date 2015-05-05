@@ -19,3 +19,16 @@ on the analysis of the protocol by
 This crate is tested against Linux, but since this crate is based on
 [serial-rs](https://github.com/dcuddeback/serial-rs) crate, it is expected this crate also works
 on Windows and Mac OS X.
+
+```rust
+extern crate plugwise;
+
+fn main() {
+    // instantiate a simulation version of Plugwise
+    let serial = plugwise::plugwise(plugwise::Device::Serial("/dev/ttyUSB0")).unwrap();
+    // create a Circle (simulation allows any MAC to be used)
+    let circle = serial.create_circle(0x01234567890ABCDEF).unwrap();
+    // switch the Circle on
+    circle.switch_on().unwrap();
+}
+```
