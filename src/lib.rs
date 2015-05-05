@@ -205,37 +205,6 @@ impl <'a, I:Read+Write+'a>  CircleInner<'a, I> {
     }
 }
 
-/// Create a instance to communicate with the Plugwise USB stick and Circle/Circle+ devices.
-fn plugwise_device<'a>(port: &str,
-                       timeout: Duration,
-                       retries: u8,
-                       snoop: ProtocolSnoop<'a>) -> io::Result<Box<Plugwise<'a>+ 'a>> {
-    let mut port = try!(serial::open(port));
-    try!(port.configure(|settings| {
-        settings.set_baud_rate(serial::Baud115200);
-        settings.set_char_size(serial::Bits8);
-        settings.set_parity(serial::ParityNone);
-        settings.set_stop_bits(serial::Stop1);
-    }));
-
-    port.set_timeout(timeout);
-    let plugwise = try!(PlugwiseInner::initialize(port));
-    plugwise.set_snoop(snoop);
-    plugwise.set_retries(retries);
-
-    Ok(Box::new(plugwise))
-}
-
-/// Create a simulation instance for integration or test purposes to use this library without the
-/// need of the real hardware.
-fn plugwise_simulator<'a>() -> io::Result<Box<Plugwise<'a>+ 'a>> {
-    let port = stub::Stub::new();
-
-    let plugwise = try!(PlugwiseInner::initialize(port));
-
-    Ok(Box::new(plugwise))
-}
-
 /// Specify which kind of Plugwise device to use
 pub enum Device<'a> {
     /// Create a link to the Plugwise USB stick to communicate with the Circle/Circle+ wall
@@ -289,15 +258,33 @@ pub enum Device<'a> {
 pub fn plugwise<'a>(device: Device<'a>) -> io::Result<Box<Plugwise<'a>+ 'a>> {
     match device {
         Device::Simulator => {
-            plugwise_simulator()
+            let port = stub::Stub::new();
+            let plugwise = try!(PlugwiseInner::initialize(port));
+            Ok(Box::new(plugwise))
         },
         Device::Serial(port) => {
-            plugwise_device(port, Duration::milliseconds(1000), 3, ProtocolSnoop::Nothing)
+            plugwise(Device::SerialExt {
+                port: port,
+                timeout: Duration::milliseconds(1000),
+                retries: 3,
+                snoop: ProtocolSnoop::Nothing
+            })
         },
         Device::SerialExt{port, timeout, retries, snoop} => {
-            let device = try!(plugwise_device(port, timeout, retries, snoop));
+            let mut port = try!(serial::open(port));
+            try!(port.configure(|settings| {
+                settings.set_baud_rate(serial::Baud115200);
+                settings.set_char_size(serial::Bits8);
+                settings.set_parity(serial::ParityNone);
+                settings.set_stop_bits(serial::Stop1);
+            }));
 
-            Ok(device)
+            port.set_timeout(timeout);
+            let plugwise = try!(PlugwiseInner::initialize(port));
+            plugwise.set_snoop(snoop);
+            plugwise.set_retries(retries);
+
+            Ok(Box::new(plugwise))
         },
     }
 }
