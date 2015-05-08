@@ -11,3 +11,4 @@ num = "*"
 
 [dev-dependencies]
 toml = "*"
+getopts = "*"
