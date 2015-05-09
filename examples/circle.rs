@@ -49,6 +49,14 @@ fn update_device_from_config<'a>(config: &'a toml::Table, device: &'a str) -> to
     config_table
 }
 
+fn remove_device_from_config<'a>(config: &'a toml::Table) -> toml::Table {
+    let mut config_table = config.get(CONFIG_HEAD)
+                                 .map_or(None, |item|item.as_table())
+                                 .map_or(toml::Table::new(), |table|table.clone());
+    config_table.remove(CONFIG_DEVICE);
+    config_table
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     let program = args[0].clone();
@@ -56,7 +64,7 @@ fn main() {
     let mut opts = Options::new();
 
     opts.optopt("s", "serial", "configure serial-port", "DEVICE")
-        .optflag("t", "stub", "configure to use stub implementation") // XXX
+        .optflag("t", "stub", "configure to use stub implementation")
         .optopt("a", "alias", "assign a alias to Mac", "NAME") // XXX
         .optflag("u", "unalias", "forget alias") // XXX
         .optflag("l", "list", "list aliassed circles") // XXX
@@ -89,6 +97,11 @@ fn main() {
     if let Some(new_device) = matches.opt_str("s") {
         // client has provided new device; update (any) loaded configuration
         let new_config = update_device_from_config(&config, &new_device);
+        config.insert(CONFIG_HEAD.to_string(), toml::Value::Table(new_config));
+        update_config = true;
+    } else if matches.opt_present("t") {
+        // client has indicated to use stub
+        let new_config = remove_device_from_config(&config);
         config.insert(CONFIG_HEAD.to_string(), toml::Value::Table(new_config));
         update_config = true;
     }
