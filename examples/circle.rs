@@ -89,6 +89,9 @@ fn update_mac_in_alias<'a>(config: &'a toml::Table, alias: &'a str, mac: u64) ->
     config_table
 }
 
+fn plugwise_actions(matches: &getopts::Matches, serial: Option<String>, mac: u64) {
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     let program = args[0].clone();
@@ -98,8 +101,8 @@ fn main() {
     opts.optopt("s", "serial", "configure serial-port", "DEVICE")
         .optflag("t", "stub", "configure to use stub implementation")
         .optopt("a", "alias", "assign a alias to Mac", "NAME")
-        .optflag("u", "unalias", "forget alias") // XXX
-        .optflag("l", "list", "list aliassed circles") // XXX
+        .optflag("u", "unalias", "forget alias")
+        .optflag("l", "list", "list aliassed circles")
         .optflag("r", "relaystatus", "print the relay status of a circle") // XXX
         .optflag("e", "enable", "enable the relay of a circle") // XXX
         .optflag("d", "disable", "disable the relay of a circle") // XXX
@@ -142,6 +145,13 @@ fn main() {
     let aliases = get_aliases(&config);
     let mac;
 
+    if matches.opt_present("l") {
+        for (alias, mac) in aliases {
+            println!("{} (mac:{:016X})", alias, mac);
+        }
+        return;
+    }
+
     // at least alias or mac must be specified
     if matches.free.len() == 1 {
         let free = &matches.free[0];
@@ -163,6 +173,8 @@ fn main() {
         } else if matches.opt_present("u") {
             config.remove(free).expect("cannot unalias MAC");
             update_config = true;
+        } else {
+            plugwise_actions(&matches, serial, mac);
         }
     } else if !update_config {
         panic!("only one alias or MAC must be specified");
