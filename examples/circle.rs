@@ -36,11 +36,12 @@ fn write_config(configfile: &path::PathBuf, config: &toml::Table) {
         &format!("unable to write to `{}`", configfile.display()));
 }
 
-fn get_device_from_config<'a>(config: &'a toml::Table) -> Option<&'a str> {
+fn get_device_from_config<'a>(config: &'a toml::Table) -> Option<String> {
     config.get(CONFIG_HEAD)
           .map_or(None, |item|item.as_table())
           .map_or(None, |table|table.get(CONFIG_DEVICE))
           .map_or(None, |string|string.as_str())
+          .map(|string|string.to_string())
 }
 
 fn get_aliases<'a>(config: &'a toml::Table) -> HashMap<String, u64> {
@@ -80,6 +81,14 @@ fn remove_device_from_config<'a>(config: &'a toml::Table) -> toml::Table {
     config_table
 }
 
+fn update_mac_in_alias<'a>(config: &'a toml::Table, alias: &'a str, mac: u64) -> toml::Table {
+    let mut config_table = config.get(alias)
+                                 .map_or(None, |item|item.as_table())
+                                 .map_or(toml::Table::new(), |table|table.clone());
+    config_table.insert(ALIAS_MAC.to_string(), toml::Value::String(format!("{:016X}", mac)));
+    config_table
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     let program = args[0].clone();
@@ -88,7 +97,7 @@ fn main() {
 
     opts.optopt("s", "serial", "configure serial-port", "DEVICE")
         .optflag("t", "stub", "configure to use stub implementation")
-        .optopt("a", "alias", "assign a alias to Mac", "NAME") // XXX
+        .optopt("a", "alias", "assign a alias to Mac", "NAME")
         .optflag("u", "unalias", "forget alias") // XXX
         .optflag("l", "list", "list aliassed circles") // XXX
         .optflag("r", "relaystatus", "print the relay status of a circle") // XXX
@@ -131,12 +140,35 @@ fn main() {
 
     let serial = get_device_from_config(&config);
     let aliases = get_aliases(&config);
+    let mac;
 
-    println!("{:?}", serial); // FIXME: remove this
-    // FIXME: implement more options
+    // at least alias or mac must be specified
+    if matches.free.len() == 1 {
+        let free = &matches.free[0];
+        // find mac by alias or try to decode mac address (16 digit hex)
+        mac = aliases.get(free).map_or_else(|| {
+            match free.len() {
+                16 => u64::from_str_radix(free, 16).ok(),
+                _ => None,
+            }
+        }, |&x| Some(x)).expect("unknown alias or MAC specified");
+
+        //println!("{:?}", mac); // FIXME: remove this
+        //println!("{:?}", serial); // FIXME: remove this
+        // FIXME: implement more options
+        if let Some(new_alias) = matches.opt_str("a") {
+            let new_config = update_mac_in_alias(&config, &new_alias, mac);
+            config.insert(new_alias, toml::Value::Table(new_config));
+            update_config = true;
+        } else if matches.opt_present("u") {
+            config.remove(free).expect("cannot unalias MAC");
+            update_config = true;
+        }
+    } else if !update_config {
+        panic!("only one alias or MAC must be specified");
+    }
 
     if update_config {
         write_config(&configfile, &config);
     }
-
 }
