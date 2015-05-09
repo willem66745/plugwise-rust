@@ -6,12 +6,14 @@ use std::env;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path;
+use std::collections::HashMap;
 
 use getopts::Options;
 
 const CONFIG: &'static str = ".plugwise.toml";
 const CONFIG_HEAD: &'static str = "config";
 const CONFIG_DEVICE: &'static str = "device";
+const ALIAS_MAC: &'static str = "mac";
 
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [options] [mac|alias]", program);
@@ -39,6 +41,27 @@ fn get_device_from_config<'a>(config: &'a toml::Table) -> Option<&'a str> {
           .map_or(None, |item|item.as_table())
           .map_or(None, |table|table.get(CONFIG_DEVICE))
           .map_or(None, |string|string.as_str())
+}
+
+fn get_aliases<'a>(config: &'a toml::Table) -> HashMap<String, u64> {
+    let mut aliases = HashMap::new();
+
+    for key in config.keys().filter(|&k|k != CONFIG_HEAD) {
+        let mac = config.get(key)
+                        .map_or(None, |item|item.as_table())
+                        .map_or(None, |table|table.get(ALIAS_MAC))
+                        .map_or(None, |string|string.as_str());
+        if let Some(mac) = mac {
+            if mac.len() == 16 {
+                let mac = u64::from_str_radix(&mac, 16);
+                if let Ok(mac) = mac {
+                    aliases.insert(key.to_string(), mac);
+                }
+            }
+        }
+    }
+
+    aliases
 }
 
 fn update_device_from_config<'a>(config: &'a toml::Table, device: &'a str) -> toml::Table {
@@ -106,9 +129,10 @@ fn main() {
         update_config = true;
     }
 
-    let device = get_device_from_config(&config);
+    let serial = get_device_from_config(&config);
+    let aliases = get_aliases(&config);
 
-    println!("{:?}", device); // FIXME: remove this
+    println!("{:?}", serial); // FIXME: remove this
     // FIXME: implement more options
 
     if update_config {
