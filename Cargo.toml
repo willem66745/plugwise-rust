@@ -12,3 +12,6 @@ num = "*"
 [dev-dependencies]
 toml = "*"
 getopts = "*"
+
+[dev-dependencies.ntpclient]
+git = "https://github.com/willem66745/ntpclient-rust"

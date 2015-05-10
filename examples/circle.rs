@@ -1,5 +1,6 @@
 
 extern crate getopts;
+extern crate ntpclient;
 extern crate time;
 extern crate toml;
 extern crate plugwise;
@@ -156,6 +157,14 @@ fn plugwise_actions(matches: &getopts::Matches, serial: Option<String>, mac: u64
     } else if matches.opt_present("c") {
         let clock = circle.get_clock().ok().expect("unable to retrieve time from circle");
         println!("circle {:016X} time is: {} (UTC)", mac, clock.asctime());
+    } else if matches.opt_present("j") {
+        println!("retrieve time from the Internet...");
+        let time = ntpclient::retrieve_ntp_timestamp("pool.ntp.org").ok()
+            .expect("unable to retrieve timestamp");
+        let tm = time::at_utc(time);
+        println!("actual Internet time: {} (UTC)", tm.asctime());
+        circle.set_clock(tm).ok().expect("unable to program time to circle");
+        println!("circle {:016X} time has been updated", mac);
     }
 }
 
@@ -176,7 +185,7 @@ fn main() {
         .optflag("p", "powerusage", "print the actual power usage of a circle")
         .optopt("o", "powersince", "print the total power usage of a given number of days", "DAYS")
         .optflag("c", "clock", "print the internal clock value of a circle")
-        .optflag("j", "updateclock", "update the internal clock of a circle using Internet time") // XXX
+        .optflag("j", "updateclock", "update the internal clock of a circle using Internet time")
         .optflag("h", "help", "print this help menu")
         .optflagmulti("v", "verbose", "print debug information");
 
