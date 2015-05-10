@@ -25,20 +25,24 @@ const CONFIG_HEAD: &'static str = "config";
 const CONFIG_DEVICE: &'static str = "device";
 const ALIAS_MAC: &'static str = "mac";
 
+// print simple program usage information
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [options] [mac|alias]", program);
     println!("{}", opts.usage(&brief));
 }
 
+// retrieve configuraton table from a TOML file
 fn load_config(configfile: &path::PathBuf) -> toml::Table {
     let mut config = String::new();
     if let Ok(mut file) = File::open(configfile) {
         file.read_to_string(&mut config).ok().expect(
             &format!("unable to read file `{}`", configfile.display()));
     } // errors are silently ignored (assuming file didn't exist)
-    toml::Parser::new(&config).parse().expect(&format!("unable to parse `{}`", configfile.display()))
+    toml::Parser::new(&config).parse().expect(&format!("unable to parse `{}`",
+                                                       configfile.display()))
 }
 
+// store the configuraton table as a TOML file
 fn write_config(configfile: &path::PathBuf, config: &toml::Table) {
     let mut file = File::create(configfile).ok().expect(
         &format!("unable to create `{}`", configfile.display()));
@@ -46,6 +50,7 @@ fn write_config(configfile: &path::PathBuf, config: &toml::Table) {
         &format!("unable to write to `{}`", configfile.display()));
 }
 
+// retrieve the TTY/COM device from the configuration table
 fn get_device_from_config<'a>(config: &'a toml::Table) -> Option<String> {
     config.get(CONFIG_HEAD)
           .map_or(None, |item|item.as_table())
@@ -54,6 +59,7 @@ fn get_device_from_config<'a>(config: &'a toml::Table) -> Option<String> {
           .map(|string|string.to_string())
 }
 
+// retrieve a map of aliasses and Circle hardware addresses
 fn get_aliases<'a>(config: &'a toml::Table) -> HashMap<String, u64> {
     let mut aliases = HashMap::new();
 
@@ -75,6 +81,7 @@ fn get_aliases<'a>(config: &'a toml::Table) -> HashMap<String, u64> {
     aliases
 }
 
+// add or update the device in the configuration table
 fn update_device_from_config<'a>(config: &'a toml::Table, device: &'a str) -> toml::Table {
     let mut config_table = config.get(CONFIG_HEAD)
                                  .map_or(None, |item|item.as_table())
@@ -83,6 +90,7 @@ fn update_device_from_config<'a>(config: &'a toml::Table, device: &'a str) -> to
     config_table
 }
 
+// remove the device from the configuration table
 fn remove_device_from_config<'a>(config: &'a toml::Table) -> toml::Table {
     let mut config_table = config.get(CONFIG_HEAD)
                                  .map_or(None, |item|item.as_table())
@@ -91,6 +99,7 @@ fn remove_device_from_config<'a>(config: &'a toml::Table) -> toml::Table {
     config_table
 }
 
+// update the mac address of a given alias in the configuration table
 fn update_mac_in_alias<'a>(config: &'a toml::Table, alias: &'a str, mac: u64) -> toml::Table {
     let mut config_table = config.get(alias)
                                  .map_or(None, |item|item.as_table())
@@ -99,6 +108,7 @@ fn update_mac_in_alias<'a>(config: &'a toml::Table, alias: &'a str, mac: u64) ->
     config_table
 }
 
+// perform plugwise device related actions
 fn plugwise_actions(matches: &getopts::Matches, serial: Option<String>, mac: u64) {
     let mut debug = io::stdout();
     let snoop = match matches.opt_count("v") {
@@ -116,7 +126,7 @@ fn plugwise_actions(matches: &getopts::Matches, serial: Option<String>, mac: u64
     };
     if serial.is_none() {
         println!("WARNING: no serial device is specified to control the Plugwise hardware.");
-        println!("         use option -s to specified the TTY/COM device. A simulated");
+        println!("         use option -s to specify the TTY/COM device. A simulated");
         println!("         version of the device is now used for testing purposes.");
         println!("");
     }
