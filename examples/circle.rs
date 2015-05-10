@@ -113,6 +113,13 @@ fn plugwise_actions(matches: &getopts::Matches, serial: Option<String>, mac: u64
                                               snoop: snoop},
         None => Device::Simulator
     };
+    if serial.is_none() {
+        println!("WARNING: no serial device is specified to control the Plugwise hardware.");
+        println!("         use option -s to specified the TTY/COM device. A simulated");
+        println!("         version of the device is now used for testing purposes.");
+        println!("");
+    }
+
     let plugwise = plugwise(device).ok().expect("unable to connect to Plugwise device");
     let circle = plugwise.create_circle(mac).ok().expect("unable to connect to circle");
 
@@ -125,6 +132,30 @@ fn plugwise_actions(matches: &getopts::Matches, serial: Option<String>, mac: u64
     } else if matches.opt_present("d") {
         circle.switch_off().ok().expect("unable to switch on circle");
         println!("circle {:016X} switched off", mac);
+    } else if matches.opt_present("p") {
+        let watts = circle.get_actual_watt_usage().ok()
+                                                  .expect("unable to retrieve actual power usage");
+        println!("circle {:016X} actual supplied power is: {} W", mac, watts);
+    } else if let Some(days) = matches.opt_str("o") {
+        let days = u32::from_str_radix(&days, 10).ok()
+            .expect("provided number of days must be a positive decimal number");
+        let period =  Duration::days(days as i64);
+        let entries = Some(period.num_hours() as u32); // power usage entries are stored per hour
+
+        let buffer = circle.get_power_buffer(entries).ok()
+            .expect("unable to retrieve power usage history");
+
+        if let Some(last_timestamp) = buffer.keys().last() {
+            let kws = buffer.iter()
+                            .filter(|&(&k, _)| (*last_timestamp - k) < period)
+                            .fold(0.0, |acc, (_, &v)| acc + v);
+            println!("circle {:016X} power usage last {} days is: {} kWh", mac, days, kws);
+        } else {
+            println!("circle {:016X} has no power usage history", mac);
+        }
+    } else if matches.opt_present("c") {
+        let clock = circle.get_clock().ok().expect("unable to retrieve time from circle");
+        println!("circle {:016X} time is: {} (UTC)", mac, clock.asctime());
     }
 }
 
@@ -142,9 +173,9 @@ fn main() {
         .optflag("r", "relaystatus", "print the relay status of a circle")
         .optflag("e", "enable", "enable the relay of a circle")
         .optflag("d", "disable", "disable the relay of a circle")
-        .optflag("p", "powerusage", "print the actual power usage of a circle") // XXX
-        .optopt("o", "powersince", "print the total power usage of a given number of days", "DAYS") // XXX
-        .optflag("c", "clock", "print the internal clock value of a circle") // XXX
+        .optflag("p", "powerusage", "print the actual power usage of a circle")
+        .optopt("o", "powersince", "print the total power usage of a given number of days", "DAYS")
+        .optflag("c", "clock", "print the internal clock value of a circle")
         .optflag("j", "updateclock", "update the internal clock of a circle using Internet time") // XXX
         .optflag("h", "help", "print this help menu")
         .optflagmulti("v", "verbose", "print debug information");
@@ -199,9 +230,6 @@ fn main() {
             }
         }, |&x| Some(x)).expect("unknown alias or MAC specified");
 
-        //println!("{:?}", mac); // FIXME: remove this
-        //println!("{:?}", serial); // FIXME: remove this
-        // FIXME: implement more options
         if let Some(new_alias) = matches.opt_str("a") {
             let new_config = update_mac_in_alias(&config, &new_alias, mac);
             config.insert(new_alias, toml::Value::Table(new_config));
