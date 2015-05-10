@@ -1,14 +1,23 @@
 
 extern crate getopts;
+extern crate time;
 extern crate toml;
+extern crate plugwise;
 
 use std::env;
 use std::fs::File;
+use std::io;
 use std::io::prelude::*;
 use std::path;
 use std::collections::HashMap;
 
 use getopts::Options;
+
+use time::Duration;
+
+use plugwise::Device;
+use plugwise::ProtocolSnoop;
+use plugwise::plugwise;
 
 const CONFIG: &'static str = ".plugwise.toml";
 const CONFIG_HEAD: &'static str = "config";
@@ -90,6 +99,33 @@ fn update_mac_in_alias<'a>(config: &'a toml::Table, alias: &'a str, mac: u64) ->
 }
 
 fn plugwise_actions(matches: &getopts::Matches, serial: Option<String>, mac: u64) {
+    let mut debug = io::stdout();
+    let snoop = match matches.opt_count("v") {
+        0 => ProtocolSnoop::Nothing,
+        1 => ProtocolSnoop::Debug(&mut debug),
+        2 => ProtocolSnoop::Raw(&mut debug),
+        _ => ProtocolSnoop::All(&mut debug)
+    };
+    let device = match serial {
+        Some(ref serial) => Device::SerialExt{port: &serial,
+                                              timeout: Duration::milliseconds(1000),
+                                              retries: 3,
+                                              snoop: snoop},
+        None => Device::Simulator
+    };
+    let plugwise = plugwise(device).ok().expect("unable to connect to Plugwise device");
+    let circle = plugwise.create_circle(mac).ok().expect("unable to connect to circle");
+
+    if matches.opt_present("r") {
+        let status = circle.is_switched_on().ok().expect("unable retrieve circle status");
+        println!("circle {:016X} relay_status: {}", mac, status);
+    } else if matches.opt_present("e") {
+        circle.switch_on().ok().expect("unable to switch on circle");
+        println!("circle {:016X} switched on", mac);
+    } else if matches.opt_present("d") {
+        circle.switch_off().ok().expect("unable to switch on circle");
+        println!("circle {:016X} switched off", mac);
+    }
 }
 
 fn main() {
@@ -103,15 +139,15 @@ fn main() {
         .optopt("a", "alias", "assign a alias to Mac", "NAME")
         .optflag("u", "unalias", "forget alias")
         .optflag("l", "list", "list aliassed circles")
-        .optflag("r", "relaystatus", "print the relay status of a circle") // XXX
-        .optflag("e", "enable", "enable the relay of a circle") // XXX
-        .optflag("d", "disable", "disable the relay of a circle") // XXX
+        .optflag("r", "relaystatus", "print the relay status of a circle")
+        .optflag("e", "enable", "enable the relay of a circle")
+        .optflag("d", "disable", "disable the relay of a circle")
         .optflag("p", "powerusage", "print the actual power usage of a circle") // XXX
         .optopt("o", "powersince", "print the total power usage of a given number of days", "DAYS") // XXX
         .optflag("c", "clock", "print the internal clock value of a circle") // XXX
         .optflag("j", "updateclock", "update the internal clock of a circle using Internet time") // XXX
-        .optflag("h", "help", "print this help menu") // XXX
-        .optflag("v", "verbose", "print debug information"); // XXX
+        .optflag("h", "help", "print this help menu")
+        .optflagmulti("v", "verbose", "print debug information");
 
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => { m },
