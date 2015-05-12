@@ -92,6 +92,8 @@ pub trait Plugwise<'a> {
 
 /// A abstract representation of the Plugwise Circle/Circle+.
 pub trait Circle {
+    /// Get unique address of the Circle
+    fn get_mac(&self) -> u64;
     /// Switch the relay of Circle on.
     fn switch_on(&self) -> io::Result<()>;
     /// Switch the relay of Circle off.
@@ -122,6 +124,10 @@ impl<'a, I:Read+Write+'a> Plugwise<'a> for PlugwiseInner<'a, I> {
 }
 
 impl<'a, I:Read+Write+'a> Circle for CircleInner<'a, I> {
+    fn get_mac(&self) -> u64 {
+        self.mac
+    }
+
     fn switch_on(&self) -> io::Result<()> {
         try!(self.protocol.borrow_mut().switch(self.mac, true));
         Ok(())
@@ -292,7 +298,8 @@ pub fn plugwise<'a>(device: Device<'a>) -> io::Result<Box<Plugwise<'a>+ 'a>> {
 #[test]
 fn smoke_external_stub() {
     let stub = plugwise(Device::Simulator).unwrap();
-    let circle = stub.create_circle(0x01234567890ABCDEF).unwrap();
+    let circle = stub.create_circle(0x0123456789ABCDEF).unwrap();
+    assert_eq!(circle.get_mac(), 0x0123456789ABCDEF);
     circle.switch_on().unwrap();
     assert_eq!(circle.is_switched_on().unwrap(), true);
     circle.switch_off().unwrap();
