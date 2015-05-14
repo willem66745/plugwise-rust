@@ -38,9 +38,9 @@ extern crate num;
 
 mod stub;
 mod protocol;
+pub mod error;
 
 use std::io::prelude::*;
-use std::io;
 use time::Duration;
 use serial::prelude::*;
 use std::rc::Rc;
@@ -60,7 +60,7 @@ struct CircleInner<'a, I> {
 }
 
 impl<'a, I: Read+Write+'a> PlugwiseInner<'a, I> {
-    fn initialize(port: I) -> io::Result<PlugwiseInner<'a, I>> {
+    fn initialize(port: I) -> error::PlResult<PlugwiseInner<'a, I>> {
         let plugwise = PlugwiseInner {
             protocol: Rc::new(RefCell::new(protocol::Protocol::new(port)))
         };
@@ -68,7 +68,7 @@ impl<'a, I: Read+Write+'a> PlugwiseInner<'a, I> {
         let result = try!(plugwise.protocol.borrow_mut().initialize());
 
         if !result.is_online {
-            return Err(io::Error::new(io::ErrorKind::Other, "not online"));
+            return Err(error::PlError::NotOnline);
         }
 
         Ok(plugwise)
@@ -87,7 +87,7 @@ impl<'a, I: Read+Write+'a> PlugwiseInner<'a, I> {
 pub trait Plugwise<'a> {
     /// Register a Circle (a wall outlet switch) and returns a abstract representation of the
     /// Circle.
-    fn create_circle(&self, mac: u64) -> io::Result<Box<Circle + 'a>>;
+    fn create_circle(&self, mac: u64) -> error::PlResult<Box<Circle + 'a>>;
 }
 
 /// A abstract representation of the Plugwise Circle/Circle+.
@@ -95,25 +95,25 @@ pub trait Circle {
     /// Get unique address of the Circle
     fn get_mac(&self) -> u64;
     /// Switch the relay of Circle on.
-    fn switch_on(&self) -> io::Result<()>;
+    fn switch_on(&self) -> error::PlResult<()>;
     /// Switch the relay of Circle off.
-    fn switch_off(&self) -> io::Result<()>;
+    fn switch_off(&self) -> error::PlResult<()>;
     /// Retrieve the relay status of the Circle.
-    fn is_switched_on(&self) -> io::Result<bool>;
+    fn is_switched_on(&self) -> error::PlResult<bool>;
     /// Get actual power usage of the Circle in Watts (sampled over the last 8 seconds).
-    fn get_actual_watt_usage(&self) -> io::Result<f64>;
+    fn get_actual_watt_usage(&self) -> error::PlResult<f64>;
     /// Get the actual clock state of the Circle (in UTC).
-    fn get_clock(&self) -> io::Result<time::Tm>;
+    fn get_clock(&self) -> error::PlResult<time::Tm>;
     /// Set the clock state of the Circle.
-    fn set_clock(&self, tm: time::Tm) -> io::Result<()>;
+    fn set_clock(&self, tm: time::Tm) -> error::PlResult<()>;
     /// Retrieve a map of power usages over time. To retrieve only the last logged items specify
     /// the number of elements to retrieve in `max_entries`. Each entry contains the power usage of
     /// one hour.
-    fn get_power_buffer(&self, max_entries: Option<u32>) -> io::Result<BTreeMap<time::Timespec, f64>>;
+    fn get_power_buffer(&self, max_entries: Option<u32>) -> error::PlResult<BTreeMap<time::Timespec, f64>>;
 }
 
 impl<'a, I:Read+Write+'a> Plugwise<'a> for PlugwiseInner<'a, I> {
-    fn create_circle(&self, mac: u64) -> io::Result<Box<Circle+ 'a>> {
+    fn create_circle(&self, mac: u64) -> error::PlResult<Box<Circle+ 'a>> {
         let calibration_data = try!(self.protocol.borrow_mut().calibrate(mac));
         Ok(Box::new(CircleInner {
             protocol: self.protocol.clone(),
@@ -128,33 +128,33 @@ impl<'a, I:Read+Write+'a> Circle for CircleInner<'a, I> {
         self.mac
     }
 
-    fn switch_on(&self) -> io::Result<()> {
+    fn switch_on(&self) -> error::PlResult<()> {
         try!(self.protocol.borrow_mut().switch(self.mac, true));
         Ok(())
     }
 
-    fn switch_off(&self) -> io::Result<()> {
+    fn switch_off(&self) -> error::PlResult<()> {
         try!(self.protocol.borrow_mut().switch(self.mac, false));
         Ok(())
     }
 
-    fn is_switched_on(&self) -> io::Result<bool> {
+    fn is_switched_on(&self) -> error::PlResult<bool> {
         let info = try!(self.protocol.borrow_mut().get_info(self.mac));
         Ok(info.relay_state)
     }
 
-    fn get_actual_watt_usage(&self) -> io::Result<f64> {
+    fn get_actual_watt_usage(&self) -> error::PlResult<f64> {
         let power_usage = try!(self.protocol.borrow_mut().get_power_usage(self.mac));
         Ok(power_usage.pulse_8s.to_watts(self.calibration_data))
     }
 
-    fn get_clock(&self) -> io::Result<time::Tm> {
+    fn get_clock(&self) -> error::PlResult<time::Tm> {
         let info = try!(self.protocol.borrow_mut().get_info(self.mac));
         let clock = try!(self.protocol.borrow_mut().get_clock_info(self.mac));
 
         let mut tm = match info.datetime.to_tm() {
             Some(tm) => tm,
-            None => return Err(io::Error::new(io::ErrorKind::Other, "circle returns an invalid timestamp"))
+            None => return Err(error::PlError::InvalidTimestamp)
         };
         tm.tm_sec = clock.second as i32;
         tm.tm_min = clock.minute as i32;
@@ -163,7 +163,7 @@ impl<'a, I:Read+Write+'a> Circle for CircleInner<'a, I> {
         Ok(tm)
     }
 
-    fn set_clock(&self, tm: time::Tm) -> io::Result<()> {
+    fn set_clock(&self, tm: time::Tm) -> error::PlResult<()> {
         let clock_set = protocol::ReqClockSet::new_from_tm(tm);
         try!(self.protocol.borrow_mut().set_clock(self.mac, clock_set));
         Ok(())
@@ -172,7 +172,7 @@ impl<'a, I:Read+Write+'a> Circle for CircleInner<'a, I> {
 
     fn get_power_buffer(&self,
                         max_entries: Option<u32>)
-                        -> io::Result<BTreeMap<time::Timespec, f64>> {
+                        -> error::PlResult<BTreeMap<time::Timespec, f64>> {
         let mut result = BTreeMap::<time::Timespec, f64>::new();
         let info = try!(self.protocol.borrow_mut().get_info(self.mac));
         let start = match max_entries {
@@ -261,7 +261,7 @@ pub enum Device<'a> {
 /// // switch the Circle on
 /// circle.switch_on().unwrap();
 /// ```
-pub fn plugwise<'a>(device: Device<'a>) -> io::Result<Box<Plugwise<'a>+ 'a>> {
+pub fn plugwise<'a>(device: Device<'a>) -> error::PlResult<Box<Plugwise<'a>+ 'a>> {
     match device {
         Device::Simulator => {
             let port = stub::Stub::new();

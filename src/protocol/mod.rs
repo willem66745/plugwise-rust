@@ -7,6 +7,7 @@ pub use self::messages::{ReqClockSet, ResInitialize, ResInfo,
                          ResCalibration, ResPowerBuffer, ResPowerUse,
                          ResClockInfo, DateTime, Pulses};
 use self::messages::{Message, MessageId, ReqHeader, ReqSwitch, ReqPowerBuffer};
+use super::error;
 
 const HEADER: [u8; 4] = [5, 5, 3, 3];
 const FOOTER: [u8; 2] = [13, 10];
@@ -52,7 +53,7 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
     }
 
     /// Send payload
-    fn send_message_raw(&mut self, payload: &[u8]) -> io::Result<()> {
+    fn send_message_raw(&mut self, payload: &[u8]) -> error::PlResult<()> {
         let crc = format!("{:04X}", State::<XMODEM>::calculate(payload)).into_bytes();
 
         try!(self.reader.get_mut().write(&HEADER));
@@ -75,7 +76,7 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
     }
 
     /// Wait until a Plugwise message has been received (and skip debugging stuff)
-    fn receive_plugwise_message_raw(&mut self) -> io::Result<(Vec<u8>, usize, usize)> {
+    fn receive_plugwise_message_raw(&mut self) -> error::PlResult<(Vec<u8>, usize, usize)> {
         loop {
             let mut buf = vec![];
 
@@ -87,8 +88,7 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
                 let header_pos = header_pos.unwrap(); // that would be a surprise when this panics
 
                 let footer_pos = match buf.windows(FOOTER.len()).rposition(|x| *x==FOOTER){
-                    None => return Err(io::Error::new(io::ErrorKind::Other,
-                                                      "unable to locate footer in received message")),
+                    None => return Err(error::PlError::Protocol),
                                                       Some(v) => v
                 };
 
@@ -126,7 +126,7 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
     }
 
     /// Wait until a complete and valid message has been received
-    fn receive_message_raw(&mut self) -> io::Result<Vec<u8>> {
+    fn receive_message_raw(&mut self) -> error::PlResult<Vec<u8>> {
         let (buf, header_pos, footer_pos) = try!(self.receive_plugwise_message_raw());
 
         // chop off header, footer and CRC
@@ -143,7 +143,7 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
         }
 
         if crc != state.get() {
-            return Err(io::Error::new(io::ErrorKind::Other, "CRC error"));
+            return Err(error::PlError::Protocol);
         }
 
         let payload = buf.iter().take(footer_pos - CRC_SIZE).skip(header_pos + HEADER.len());
@@ -152,7 +152,7 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
     }
 
     /// Keep receiving messages until the given message identifier has been received
-    fn expect_message(&mut self, expected_message_id: MessageId) -> io::Result<Message> {
+    fn expect_message(&mut self, expected_message_id: MessageId) -> error::PlResult<Message> {
         loop {
             let msg = try!(self.receive_message_raw());
             let msg = try!(Message::from_payload(&msg));
@@ -170,7 +170,7 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
         }
     }
 
-    fn wait_for_mac_ack(&mut self, expected_mac: u64) -> io::Result<()> {
+    fn wait_for_mac_ack(&mut self, expected_mac: u64) -> error::PlResult<()> {
         loop {
             let ack = try!(self.expect_message(MessageId::Ack));
             if let Message::Ack(_, ack) = ack {
@@ -186,7 +186,7 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
     }
 
     /// Send message
-    fn send_message(&mut self, message: &Message) -> io::Result<()> {
+    fn send_message(&mut self, message: &Message) -> error::PlResult<()> {
         match self.snoop {
             ProtocolSnoop::Debug(ref mut writer) => {
                 try!(writer.write_fmt(format_args!("> {:?}\n", message)));
@@ -199,7 +199,7 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
     }
 
     /// Send a message and wait for response
-    fn send_and_expect(&mut self, message: Message, expected: MessageId) -> io::Result<Message> {
+    fn send_and_expect(&mut self, message: Message, expected: MessageId) -> error::PlResult<Message> {
         let mut retries = self.retries;
 
         loop {
@@ -209,12 +209,14 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
                 Err(e) => {
                     if retries == 0 {
                         return Err(e);
-                    } else {
+                    } else if let error::PlError::Io(e) = e {
                         if e.kind() != io::ErrorKind::TimedOut {
-                            return Err(e);
+                            return Err(error::PlError::Io(e));
                         } else {
                             retries = retries - 1;
                         }
+                    } else {
+                        return Err(e);
                     }
                 }
             }
@@ -222,7 +224,7 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
     }
 
     /// Send a message and wait for acknowledge with a mac
-    fn send_and_expect_ack(&mut self, message: Message, mac: u64) -> io::Result<()> {
+    fn send_and_expect_ack(&mut self, message: Message, mac: u64) -> error::PlResult<()> {
         let mut retries = self.retries;
 
         loop {
@@ -232,12 +234,14 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
                 Err(e) => {
                     if retries == 0 {
                         return Err(e);
-                    } else {
+                    } else if let error::PlError::Io(e) = e {
                         if e.kind() != io::ErrorKind::TimedOut {
-                            return Err(e);
+                            return Err(error::PlError::Io(e));
                         } else {
                             retries = retries - 1;
                         }
+                    } else {
+                        return Err(e);
                     }
                 }
             }
@@ -245,29 +249,29 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
     }
 
     /// Initialize the Plugwise USB stick
-    pub fn initialize(&mut self) -> io::Result<ResInitialize> {
+    pub fn initialize(&mut self) -> error::PlResult<ResInitialize> {
         let msg = try!(self.send_and_expect(Message::ReqInitialize,
                                             MessageId::ResInitialize));
 
         match msg {
             Message::ResInitialize(_, res) => Ok(res),
-            _ => Err(io::Error::new(io::ErrorKind::Other, "unexpected initialization response"))
+            _ => Err(error::PlError::UnexpectedResponse)
         }
     }
 
     /// Get info from a circle
-    pub fn get_info(&mut self, mac: u64) -> io::Result<ResInfo> {
+    pub fn get_info(&mut self, mac: u64) -> error::PlResult<ResInfo> {
         let msg = try!(self.send_and_expect(Message::ReqInfo(ReqHeader{mac: mac}),
                                             MessageId::ResInfo));
 
         match msg {
             Message::ResInfo(_, res) => Ok(res),
-            _ => Err(io::Error::new(io::ErrorKind::Other, "unexpected information response"))
+            _ => Err(error::PlError::UnexpectedResponse)
         }
     }
 
     /// Switch a circle
-    pub fn switch(&mut self, mac: u64, on: bool) -> io::Result<()> {
+    pub fn switch(&mut self, mac: u64, on: bool) -> error::PlResult<()> {
         try!(self.send_and_expect_ack(Message::ReqSwitch(ReqHeader{mac: mac},
                                                          ReqSwitch{on: on}),
                                       mac));
@@ -275,52 +279,52 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
     }
 
     /// Calibrate a circle
-    pub fn calibrate(&mut self, mac: u64) -> io::Result<ResCalibration> {
+    pub fn calibrate(&mut self, mac: u64) -> error::PlResult<ResCalibration> {
         let msg = try!(self.send_and_expect(Message::ReqCalibration(ReqHeader{mac: mac}),
                                             MessageId::ResCalibration));
 
         match msg {
             Message::ResCalibration(_, res) => Ok(res),
-            _ => Err(io::Error::new(io::ErrorKind::Other, "unexpected information response"))
+            _ => Err(error::PlError::UnexpectedResponse)
         }
     }
 
     /// Retrieve power buffer
-    pub fn get_power_buffer(&mut self, mac: u64, addr: u32) -> io::Result<ResPowerBuffer> {
+    pub fn get_power_buffer(&mut self, mac: u64, addr: u32) -> error::PlResult<ResPowerBuffer> {
         let msg = try!(self.send_and_expect(Message::ReqPowerBuffer(ReqHeader{mac: mac},
                                                                     ReqPowerBuffer{logaddr: addr}),
                                             MessageId::ResPowerBuffer));
 
         match msg {
             Message::ResPowerBuffer(_, res) => Ok(res),
-            _ => Err(io::Error::new(io::ErrorKind::Other, "unexpected information response"))
+            _ => Err(error::PlError::UnexpectedResponse)
         }
     }
 
     /// Retrieve actual power usage
-    pub fn get_power_usage(&mut self, mac: u64) -> io::Result<ResPowerUse> {
+    pub fn get_power_usage(&mut self, mac: u64) -> error::PlResult<ResPowerUse> {
         let msg = try!(self.send_and_expect(Message::ReqPowerUse(ReqHeader{mac: mac}),
                                             MessageId::ResPowerUse));
 
         match msg {
             Message::ResPowerUse(_, res) => Ok(res),
-            _ => Err(io::Error::new(io::ErrorKind::Other, "unexpected information response"))
+            _ => Err(error::PlError::UnexpectedResponse)
         }
     }
 
     /// Retrieve actual power usage
-    pub fn get_clock_info(&mut self, mac: u64) -> io::Result<ResClockInfo> {
+    pub fn get_clock_info(&mut self, mac: u64) -> error::PlResult<ResClockInfo> {
         let msg = try!(self.send_and_expect(Message::ReqClockInfo(ReqHeader{mac: mac}),
                                             MessageId::ResClockInfo));
 
         match msg {
             Message::ResClockInfo(_, res) => Ok(res),
-            _ => Err(io::Error::new(io::ErrorKind::Other, "unexpected information response"))
+            _ => Err(error::PlError::UnexpectedResponse)
         }
     }
 
     /// Set clock
-    pub fn set_clock(&mut self, mac: u64, clock_set: ReqClockSet) -> io::Result<()> {
+    pub fn set_clock(&mut self, mac: u64, clock_set: ReqClockSet) -> error::PlResult<()> {
         try!(self.send_and_expect_ack(Message::ReqClockSet(ReqHeader{mac: mac},
                                                            clock_set),
                                       mac));

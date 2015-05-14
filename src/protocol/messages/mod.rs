@@ -1,7 +1,7 @@
 mod raw;
 
-use std::io;
 use time::{Tm, Timespec};
+use super::super::error;
 
 const ADDR_OFFS: u32 = 278528;
 const BYTES_PER_POS: u32 = 32;
@@ -86,7 +86,7 @@ pub struct Ack {
 
 impl Ack {
     /// Decode info response
-    fn new(decoder: raw::RawDataConsumer) -> io::Result<Ack> {
+    fn new(decoder: raw::RawDataConsumer) -> error::PlResult<Ack> {
         let (decoder, status) = try!(decoder.decode::<u16>());
         let (decoder, mac) = if decoder.get_remaining() > 0 {
             let (decoder, mac) = try!(decoder.decode::<u64>());
@@ -114,7 +114,7 @@ pub struct ResInitialize {
 
 impl ResInitialize {
     /// Decode initialization response
-    fn new(decoder: raw::RawDataConsumer) -> io::Result<ResInitialize> {
+    fn new(decoder: raw::RawDataConsumer) -> error::PlResult<ResInitialize> {
         let (decoder, unknown1) = try!(decoder.decode::<u8>());
         let (decoder, is_online) = try!(decoder.decode::<u8>());
         let (decoder, network_id) = try!(decoder.decode::<u64>());
@@ -198,7 +198,7 @@ pub struct ResInfo {
 
 impl ResInfo {
     /// Decode info response
-    fn new(decoder: raw::RawDataConsumer) -> io::Result<ResInfo> {
+    fn new(decoder: raw::RawDataConsumer) -> error::PlResult<ResInfo> {
         let (decoder, datetime) = try!(decoder.decode_datetime());
         let (decoder, last_logaddr) = try!(decoder.decode::<u32>());
         let (decoder, relay_state) = try!(decoder.decode::<u8>());
@@ -246,7 +246,7 @@ pub struct ResCalibration {
 }
 
 impl ResCalibration {
-    fn new(decoder: raw::RawDataConsumer) -> io::Result<ResCalibration> {
+    fn new(decoder: raw::RawDataConsumer) -> error::PlResult<ResCalibration> {
         let (decoder, gain_a) = try!(decoder.decode_f32());
         let (decoder, gain_b) = try!(decoder.decode_f32());
         let (decoder, off_total) = try!(decoder.decode_f32());
@@ -289,7 +289,7 @@ pub struct ResPowerBuffer {
 }
 
 impl ResPowerBuffer {
-    fn new(decoder: raw::RawDataConsumer) -> io::Result<ResPowerBuffer> {
+    fn new(decoder: raw::RawDataConsumer) -> error::PlResult<ResPowerBuffer> {
         let (decoder, datetime1) = try!(decoder.decode_datetime());
         let (decoder, pulses1) = try!(decoder.decode::<u32>());
         let (decoder, datetime2) = try!(decoder.decode_datetime());
@@ -326,7 +326,7 @@ pub struct ResPowerUse {
 }
 
 impl ResPowerUse {
-    fn new(decoder: raw::RawDataConsumer) -> io::Result<ResPowerUse> {
+    fn new(decoder: raw::RawDataConsumer) -> error::PlResult<ResPowerUse> {
         let (decoder, pulse_1s) = try!(decoder.decode::<u16>());
         let (decoder, pulse_8s) = try!(decoder.decode::<u16>());
         let (decoder, pulse_hour) = try!(decoder.decode::<u32>());
@@ -357,7 +357,7 @@ pub struct ResClockInfo {
 }
 
 impl ResClockInfo {
-    fn new(decoder: raw::RawDataConsumer) -> io::Result<ResClockInfo> {
+    fn new(decoder: raw::RawDataConsumer) -> error::PlResult<ResClockInfo> {
         let (decoder, hour) = try!(decoder.decode::<u8>());
         let (decoder, minute) = try!(decoder.decode::<u8>());
         let (decoder, second) = try!(decoder.decode::<u8>());
@@ -502,7 +502,7 @@ pub enum Message {
 
 impl Message {
     /// Convert given message to a bunch of bytes
-    pub fn to_payload(&self) -> io::Result<Vec<u8>> {
+    pub fn to_payload(&self) -> error::PlResult<Vec<u8>> {
         let mut vec = vec![];
 
         vec.extend(self.to_message_id().as_bytes());
@@ -537,12 +537,12 @@ impl Message {
                 vec.extend(req.as_bytes());
                 Ok(vec)
             },
-            _ => Err(io::Error::new(io::ErrorKind::Other, "Unsupported message type"))
+            _ => Err(error::PlError::Protocol)
         }
     }
 
     /// Convert given bunch of bytes to interpretable message
-    pub fn from_payload(payload: &[u8]) -> io::Result<Message> {
+    pub fn from_payload(payload: &[u8]) -> error::PlResult<Message> {
         let decoder = raw::RawDataConsumer::new(payload);
 
         let (decoder, msg_id) = try!(decoder.decode::<u16>());
@@ -577,7 +577,7 @@ impl Message {
             MessageId::Ack =>
                 Ok(Message::Ack(header, try!(Ack::new(decoder)))),
             _ =>
-                Err(io::Error::new(io::ErrorKind::Other, "Unsupported response message received"))
+                Err(error::PlError::Protocol)
         }
     }
 
