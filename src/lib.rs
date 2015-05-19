@@ -215,12 +215,12 @@ impl <'a, I:Read+Write+'a>  CircleInner<'a, I> {
 pub enum Device<'a> {
     /// Create a link to the Plugwise USB stick to communicate with the Circle/Circle+ wall
     /// outlets. The reference to the hardware device (i.e. `/dev/ttyUSB0`) must be provided.
-    Serial(&'a str),
+    Serial(String),
     /// Simular to `Serial` but with extra settings:
     ///
     SerialExt {
         /// USB serial device name
-        port: &'a str,
+        port: String,
         /// Timeout in milliseconds;
         timeout: time::Duration,
         /// Number of attempts to retry communication;
@@ -277,7 +277,7 @@ pub fn plugwise<'a>(device: Device<'a>) -> error::PlResult<Box<Plugwise<'a>+ 'a>
             })
         },
         Device::SerialExt{port, timeout, retries, snoop} => {
-            let mut port = try!(serial::open(port));
+            let mut port = try!(serial::open(&port[..]));
             try!(port.configure(|settings| {
                 settings.set_baud_rate(serial::Baud115200);
                 settings.set_char_size(serial::Bits8);

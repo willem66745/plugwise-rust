@@ -56,7 +56,7 @@ fn get_device_from_config<'a>(config: &'a toml::Table) -> Option<String> {
           .map_or(None, |item|item.as_table())
           .map_or(None, |table|table.get(CONFIG_DEVICE))
           .map_or(None, |string|string.as_str())
-          .map(|string|string.to_string())
+          .map(|string|string.into())
 }
 
 // retrieve a map of aliasses and Circle hardware addresses
@@ -86,7 +86,7 @@ fn update_device_from_config<'a>(config: &'a toml::Table, device: &'a str) -> to
     let mut config_table = config.get(CONFIG_HEAD)
                                  .map_or(None, |item|item.as_table())
                                  .map_or(toml::Table::new(), |table|table.clone());
-    config_table.insert(CONFIG_DEVICE.to_string(), toml::Value::String(device.to_string()));
+    config_table.insert(CONFIG_DEVICE.into(), toml::Value::String(device.into()));
     config_table
 }
 
@@ -104,7 +104,7 @@ fn update_mac_in_alias<'a>(config: &'a toml::Table, alias: &'a str, mac: u64) ->
     let mut config_table = config.get(alias)
                                  .map_or(None, |item|item.as_table())
                                  .map_or(toml::Table::new(), |table|table.clone());
-    config_table.insert(ALIAS_MAC.to_string(), toml::Value::String(format!("{:016X}", mac)));
+    config_table.insert(ALIAS_MAC.into(), toml::Value::String(format!("{:016X}", mac)));
     config_table
 }
 
@@ -118,7 +118,7 @@ fn plugwise_actions(matches: &getopts::Matches, serial: Option<String>, mac: u64
         _ => ProtocolSnoop::All(&mut debug)
     };
     let device = match serial {
-        Some(ref serial) => Device::SerialExt{port: &serial,
+        Some(ref serial) => Device::SerialExt{port: serial.clone(),
                                               timeout: Duration::milliseconds(1000),
                                               retries: 3,
                                               snoop: snoop},
@@ -218,12 +218,12 @@ fn main() {
     if let Some(new_device) = matches.opt_str("s") {
         // client has provided new device; update (any) loaded configuration
         let new_config = update_device_from_config(&config, &new_device);
-        config.insert(CONFIG_HEAD.to_string(), toml::Value::Table(new_config));
+        config.insert(CONFIG_HEAD.into(), toml::Value::Table(new_config));
         update_config = true;
     } else if matches.opt_present("t") {
         // client has indicated to use stub
         let new_config = remove_device_from_config(&config);
-        config.insert(CONFIG_HEAD.to_string(), toml::Value::Table(new_config));
+        config.insert(CONFIG_HEAD.into(), toml::Value::Table(new_config));
         update_config = true;
     }
 
