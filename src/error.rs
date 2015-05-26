@@ -3,6 +3,7 @@ use std::result;
 use std::error;
 use std::fmt;
 use std::io;
+use serial;
 
 pub type PlResult<T> = result::Result<T, PlError>;
 
@@ -11,6 +12,8 @@ pub type PlResult<T> = result::Result<T, PlError>;
 pub enum PlError {
     /// Mapped `std::io::Error`
     Io(io::Error),
+    /// Mapped `serial::Error`
+    Serial(serial::Error),
     /// Plugwise USB strick reports Circle network not online
     NotOnline,
     /// Invalid timestamp from Circle
@@ -27,10 +30,17 @@ impl From<io::Error> for PlError {
     }
 }
 
+impl From<serial::Error> for PlError {
+    fn from(err: serial::Error) -> PlError {
+        PlError::Serial(err)
+    }
+}
+
 impl fmt::Display for PlError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             PlError::Io(ref err) => fmt::Display::fmt(err, f),
+            PlError::Serial(ref err) => fmt::Display::fmt(err, f),
             PlError::NotOnline => write!(f, "Plugwise Circle network not online"),
             PlError::InvalidTimestamp => write!(f, "Circle did return a invalid timestamp"),
             PlError::UnexpectedResponse => write!(f, "Unexpected response"),
@@ -43,6 +53,7 @@ impl error::Error for PlError {
     fn description(&self) -> &str {
         match *self {
             PlError::Io(ref err) => error::Error::description(err),
+            PlError::Serial(ref err) => error::Error::description(err),
             PlError::NotOnline => "Plugwise Circle network not online",
             PlError::InvalidTimestamp => "Circle did return a invalid timestamp",
             PlError::UnexpectedResponse => "Unexpected response",
@@ -53,6 +64,7 @@ impl error::Error for PlError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             PlError::Io(ref err) => err.cause(),
+            PlError::Serial(ref err) => err.cause(),
             PlError::NotOnline => None,
             PlError::InvalidTimestamp => None,
             PlError::UnexpectedResponse => None,

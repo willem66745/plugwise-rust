@@ -49,6 +49,14 @@ use std::collections::BTreeMap;
 
 pub use protocol::ProtocolSnoop;
 
+const SETTINGS: serial::PortSettings = serial::PortSettings {
+    baud_rate:      serial::Baud115200,
+    char_size:      serial::Bits8,
+    parity:         serial::ParityNone,
+    stop_bits:      serial::Stop1,
+    flow_control:   serial::FlowNone,
+};
+
 struct PlugwiseInner<'a, I> {
     protocol: Rc<RefCell<protocol::Protocol<'a, I>>>
 }
@@ -278,14 +286,8 @@ pub fn plugwise<'a>(device: Device<'a>) -> error::PlResult<Box<Plugwise<'a>+ 'a>
         },
         Device::SerialExt{port, timeout, retries, snoop} => {
             let mut port = try!(serial::open(&port[..]));
-            try!(port.configure(|settings| {
-                settings.set_baud_rate(serial::Baud115200);
-                settings.set_char_size(serial::Bits8);
-                settings.set_parity(serial::ParityNone);
-                settings.set_stop_bits(serial::Stop1);
-            }));
-
-            port.set_timeout(timeout);
+            try!(port.configure(&SETTINGS));
+            try!(port.set_timeout(timeout));
             let plugwise = try!(PlugwiseInner::initialize(port));
             plugwise.set_snoop(snoop);
             plugwise.set_retries(retries);
