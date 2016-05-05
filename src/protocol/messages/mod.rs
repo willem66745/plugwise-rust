@@ -584,7 +584,7 @@ impl Message {
     pub fn to_message_id(&self) -> MessageId {
         match *self {
             Message::Ack(..) => MessageId::Ack,
-            Message::ReqInitialize(..) => MessageId::ReqInitialize,
+            Message::ReqInitialize => MessageId::ReqInitialize,
             Message::ResInitialize(..) => MessageId::ResInitialize,
             Message::ReqInfo(..) => MessageId::ReqInfo,
             Message::ResInfo(..) => MessageId::ResInfo,

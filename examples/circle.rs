@@ -14,7 +14,7 @@ use std::collections::HashMap;
 
 use getopts::Options;
 
-use time::Duration;
+use std::time::Duration;
 
 use plugwise::Device;
 use plugwise::ProtocolSnoop;
@@ -119,7 +119,7 @@ fn plugwise_actions(matches: &getopts::Matches, serial: Option<String>, mac: u64
     };
     let device = match serial {
         Some(ref serial) => Device::SerialExt{port: serial.clone(),
-                                              timeout: Duration::milliseconds(1000),
+                                              timeout: Duration::from_millis(1000),
                                               retries: 3,
                                               snoop: snoop},
         None => Device::Simulator
@@ -150,7 +150,7 @@ fn plugwise_actions(matches: &getopts::Matches, serial: Option<String>, mac: u64
     } else if let Some(days) = matches.opt_str("o") {
         let days = u32::from_str_radix(&days, 10).ok()
             .expect("provided number of days must be a positive decimal number");
-        let period =  Duration::days(days as i64);
+        let period =  time::Duration::days(days as i64);
         let entries = Some(period.num_hours() as u32); // power usage entries are stored per hour
 
         let buffer = circle.get_power_buffer(entries).ok()

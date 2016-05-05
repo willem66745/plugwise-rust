@@ -4,14 +4,14 @@ version = "0.0.1"
 authors = ["Willem <willem66745@gmail.com>"]
 
 [dependencies]
-crc16 = "*"
-time = "*"
-serial = "*"
-num = "*"
+crc16 = "0.3"
+time = "0.1"
+serial = "0.3"
+num = "0.1"
 
 [dev-dependencies]
-toml = "*"
-getopts = "*"
+toml = "0.1"
+getopts = "0.2"
 
 [dev-dependencies.ntpclient]
 git = "https://github.com/willem66745/ntpclient-rust"

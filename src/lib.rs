@@ -32,16 +32,16 @@
 //! ```
 
 extern crate crc16;
-extern crate time;
 extern crate serial;
 extern crate num;
+extern crate time;
 
 mod stub;
 mod protocol;
 pub mod error;
 
 use std::io::prelude::*;
-use time::Duration;
+use std::time::Duration;
 use serial::prelude::*;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -195,7 +195,7 @@ impl<'a, I:Read+Write+'a> Circle for CircleInner<'a, I> {
             }
         };
 
-        for index in (start..(info.last_logaddr + 1)) {
+        for index in start..(info.last_logaddr + 1) {
             let buffer = try!(self.protocol.borrow_mut().get_power_buffer(self.mac, index));
 
             self.get_power_buffer_helper(&mut result, &buffer.datetime1, &buffer.pulses1);
@@ -230,7 +230,7 @@ pub enum Device<'a> {
         /// USB serial device name
         port: String,
         /// Timeout in milliseconds;
-        timeout: time::Duration,
+        timeout: Duration,
         /// Number of attempts to retry communication;
         retries: u8,
         /// Tracing settings (including a reference to a `io::Write` instance to log the
@@ -279,7 +279,7 @@ pub fn plugwise<'a>(device: Device<'a>) -> error::PlResult<Box<Plugwise<'a>+ 'a>
         Device::Serial(port) => {
             plugwise(Device::SerialExt {
                 port: port,
-                timeout: Duration::milliseconds(1000),
+                timeout: Duration::from_millis(1000),
                 retries: 3,
                 snoop: ProtocolSnoop::Nothing
             })

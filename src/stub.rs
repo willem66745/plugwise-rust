@@ -1,5 +1,4 @@
 use std::io;
-use std::io::prelude::*;
 use std::cmp;
 use std::str;
 use std::collections::BTreeMap;
@@ -141,7 +140,7 @@ impl io::Read for Stub {
 
         let size = cmp::min(buf.len(), self.output.len());
 
-        for i in (0..size) {
+        for i in 0..size {
             buf[i] = self.output.remove(0);
         }
 
@@ -166,7 +165,7 @@ impl io::Write for Stub {
                 // no other way to deque a specific amount of data (or would
                 // `self.input.drain().take(pos + 1)` a better approach in the
                 // future?
-                for _ in (0..pos + 1) {
+                for _ in 0..pos + 1 {
                     let _ = self.input.remove(0);
                 }
             }
