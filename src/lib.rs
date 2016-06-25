@@ -35,6 +35,8 @@ extern crate crc16;
 extern crate serial;
 extern crate num;
 extern crate time;
+#[macro_use]
+extern crate log;
 
 mod stub;
 mod protocol;
@@ -279,8 +281,8 @@ pub fn plugwise<'a>(device: Device<'a>) -> error::PlResult<Box<Plugwise<'a>+ 'a>
         Device::Serial(port) => {
             plugwise(Device::SerialExt {
                 port: port,
-                timeout: Duration::from_millis(1000),
-                retries: 3,
+                timeout: Duration::from_millis(2000),
+                retries: 5,
                 snoop: ProtocolSnoop::Nothing
             })
         },

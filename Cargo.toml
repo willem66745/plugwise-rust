@@ -8,6 +8,7 @@ crc16 = "0.3"
 time = "0.1"
 serial = "0.3"
 num = "0.1"
+log = "0.3"
 
 [dev-dependencies]
 toml = "0.1"

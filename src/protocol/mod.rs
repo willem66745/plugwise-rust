@@ -157,6 +157,8 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
             let msg = try!(self.receive_message_raw());
             let msg = try!(Message::from_payload(&msg));
 
+            debug!("received: {:?}", msg);
+
             match self.snoop {
                 ProtocolSnoop::Debug(ref mut writer) => {
                     try!(writer.write_fmt(format_args!("< {:?}\n", msg)));
@@ -229,8 +231,11 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
 
         loop {
             try!(self.send_message(&message));
+            debug!("sending {:?}", message);
             match self.wait_for_mac_ack(mac) {
-                Ok(n) => return Ok(n),
+                Ok(n) => {
+                    return Ok(n)
+                }
                 Err(e) => {
                     if retries == 0 {
                         return Err(e);
@@ -243,6 +248,7 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
                     } else {
                         return Err(e);
                     }
+                    info!("retries pending {} for {:?}", retries, message);
                 }
             }
         }
