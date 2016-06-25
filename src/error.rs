@@ -65,10 +65,7 @@ impl error::Error for PlError {
         match *self {
             PlError::Io(ref err) => err.cause(),
             PlError::Serial(ref err) => err.cause(),
-            PlError::NotOnline => None,
-            PlError::InvalidTimestamp => None,
-            PlError::UnexpectedResponse => None,
-            PlError::Protocol => None,
+            PlError::NotOnline | PlError::InvalidTimestamp | PlError::UnexpectedResponse | PlError::Protocol => None,
         }
     }
 }

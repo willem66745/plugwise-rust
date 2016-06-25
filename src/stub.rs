@@ -125,8 +125,8 @@ impl Stub {
 
 impl io::Read for Stub {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if self.output.len() == 0 {
-            if self.responses.len() == 0 {
+        if self.output.is_empty() {
+            if self.responses.is_empty() {
                 return Err(io::Error::new(io::ErrorKind::Other, "no response pending"));
             }
 

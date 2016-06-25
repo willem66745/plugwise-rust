@@ -457,7 +457,6 @@ pub enum MessageId {
 impl MessageId {
     fn new(id: u16) -> MessageId {
         match id {
-            ACK => MessageId::Ack,
             REQ_INITIALIZE => MessageId::ReqInitialize,
             RES_INITIALIZE => MessageId::ResInitialize,
             REQ_INFO => MessageId::ReqInfo,
@@ -472,7 +471,7 @@ impl MessageId {
             REQ_CLOCK_INFO => MessageId::ReqClockInfo,
             RES_CLOCK_INFO => MessageId::ResClockInfo,
             REQ_CLOCK_SET => MessageId::ReqClockSet,
-            _ => MessageId::Ack
+            ACK|_ => MessageId::Ack,
         }
     }
 

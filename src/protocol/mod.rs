@@ -108,18 +108,15 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
             }
             else
             {
-                match self.snoop {
-                    ProtocolSnoop::All(ref mut writer) => {
-                        let footer_pos = buf.windows(FOOTER.len()).rposition(|x| *x==FOOTER);
+                if let ProtocolSnoop::All(ref mut writer) = self.snoop {
+                    let footer_pos = buf.windows(FOOTER.len()).rposition(|x| *x==FOOTER);
 
-                        if let Some(pos) = footer_pos {
-                            let (part, _) = buf.split_at(pos);
-                            try!(writer.write_fmt(format_args!("< ")));
-                            try!(writer.write(part));
-                            try!(writer.write(&[b'\n']));
-                        }
+                    if let Some(pos) = footer_pos {
+                        let (part, _) = buf.split_at(pos);
+                        try!(writer.write_fmt(format_args!("< ")));
+                        try!(writer.write(part));
+                        try!(writer.write(&[b'\n']));
                     }
-                    _ => {}
                 }
             }
         }
@@ -159,11 +156,8 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
 
             debug!("received: {:?}", msg);
 
-            match self.snoop {
-                ProtocolSnoop::Debug(ref mut writer) => {
-                    try!(writer.write_fmt(format_args!("< {:?}\n", msg)));
-                },
-                _ => {}
+            if let ProtocolSnoop::Debug(ref mut writer) = self.snoop {
+                try!(writer.write_fmt(format_args!("< {:?}\n", msg)));
             }
 
             if msg.to_message_id() == expected_message_id {
@@ -189,11 +183,8 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
 
     /// Send message
     fn send_message(&mut self, message: &Message) -> error::PlResult<()> {
-        match self.snoop {
-            ProtocolSnoop::Debug(ref mut writer) => {
-                try!(writer.write_fmt(format_args!("> {:?}\n", message)));
-            },
-            _ => {}
+        if let ProtocolSnoop::Debug(ref mut writer) = self.snoop {
+            try!(writer.write_fmt(format_args!("> {:?}\n", message)));
         }
         let msg = try!(message.to_payload());
         try!(self.send_message_raw(&msg));
@@ -215,7 +206,7 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
                         if e.kind() != io::ErrorKind::TimedOut {
                             return Err(error::PlError::Io(e));
                         } else {
-                            retries = retries - 1;
+                            retries -= 1;
                         }
                     } else {
                         return Err(e);
@@ -243,7 +234,7 @@ impl<'a, R: Read + Write> Protocol<'a, R> {
                         if e.kind() != io::ErrorKind::TimedOut {
                             return Err(error::PlError::Io(e));
                         } else {
-                            retries = retries - 1;
+                            retries -= 1;
                         }
                     } else {
                         return Err(e);
